@@ -11,13 +11,26 @@ export interface UserProfile {
 }
 
 export interface ExtractedListing {
+  // Always present
   zpid: string
   rawAddress: string
+  lat: number
+  lon: number
   price: number
   beds: number
   baths: number
-  sqft: number
-  listingDescription: string
+  // Almost always present
+  sqft: number | null
+  yearBuilt: number | null
+  homeType: string | null
+  listingDescription: string | null
+  // Financial
+  zestimate: number | null
+  priceDelta: number | null
+  annualTax: number | null
+  propertyTaxRate: number | null
+  annualHomeownersInsurance: number | null
+  priceDeltaFlag: boolean
 }
 
 export interface Phase1Result extends ExtractedListing {
