@@ -1,0 +1,101 @@
+export interface UserProfile {
+  mode: 'drives' | 'transit' | 'walk'
+  workLat: number
+  workLon: number
+  remoteFrequency: 'remote' | 'hybrid' | 'office'
+  hasKids: boolean
+  hasPet: boolean
+  mobility: 'none' | 'wheelchair' | 'elderly'
+  ageRange: '20s30s' | '40s50s' | '60s'
+  taxSensitive: boolean
+}
+
+export interface ExtractedListing {
+  zpid: string
+  rawAddress: string
+  price: number
+  beds: number
+  baths: number
+  sqft: number
+  listingDescription: string
+}
+
+export interface Phase1Result extends ExtractedListing {
+  lat: number
+  lon: number
+  assessedValue: number
+  annualTax: number
+  yearBuilt: number
+  priceDelta: number
+  priceDeltaFlag: boolean
+  commute: {
+    carPeak: number | null
+    carOffpeak: number | null
+    transit: number | null
+    walk: number | null
+  }
+  floodZone: string
+  floodRisk: string
+  wildfireHazard: string
+  crimeGrade: string
+  crimeIndex: number
+  osmWalkabilityScore: number
+  scores: {
+    lifestyle: number
+    accessibility: number
+    family: number
+    riskCost: number
+    overall: number
+  }
+}
+
+export interface GeminiOutput {
+  scores: {
+    lifestyle: number
+    accessibility: number
+    family: number
+    riskCost: number
+    overall: number
+  }
+  scoreDeltas: {
+    lifestyle: number
+    accessibility: number
+    family: number
+    riskCost: number
+    overall: number
+  }
+  narrative: string
+  highlights: string[]
+  agentQuestions: string[]
+  chatContext: string
+}
+
+export interface Phase2Result extends Phase1Result {
+  grocery: number | null
+  pharmacy: number | null
+  park: number | null
+  hospital: number | null
+  childcare: number | null
+  school: number | null
+  avgSlope: number | null
+  maxSlope: number | null
+  adaFlag: boolean
+  listingMentionsStairs: boolean
+  listingMentionsElevator: boolean
+  schools: {
+    name: string
+    type: string
+    rating: number
+    distance: number
+  }[]
+  geminiOutput: GeminiOutput | null
+}
+
+export enum CardState {
+  IDLE = 'IDLE',
+  LOADING = 'LOADING',
+  PHASE1_COMPLETE = 'PHASE1_COMPLETE',
+  PHASE2_LOADING = 'PHASE2_LOADING',
+  PHASE2_COMPLETE = 'PHASE2_COMPLETE',
+  ERROR = 'ERROR',
+}
