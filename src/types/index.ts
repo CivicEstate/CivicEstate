@@ -36,7 +36,6 @@ export interface ExtractedListing {
 export interface Phase1Result extends ExtractedListing {
   lat: number
   lon: number
-  assessedValue: number
   annualTax: number
   yearBuilt: number
   priceDelta: number
@@ -47,12 +46,12 @@ export interface Phase1Result extends ExtractedListing {
     transit: number | null
     walk: number | null
   }
-  floodZone: string
-  floodRisk: string
-  wildfireHazard: string
-  crimeGrade: string
-  crimeIndex: number
-  osmWalkabilityScore: number
+  floodZone: string | null
+  floodRisk: string | null
+  wildfireHazard: string | null
+  crimeGrade: string | null
+  crimeIndex: number | null
+  osmWalkabilityScore: number | null
   scores: {
     lifestyle: number
     accessibility: number
