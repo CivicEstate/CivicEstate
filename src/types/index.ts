@@ -75,6 +75,7 @@ export interface GeminiOutput {
     family: number
     riskCost: number
     overall: number
+    sexOffenderProximityScore: number
   }
   narrative: string
   highlights: string[]
@@ -101,6 +102,9 @@ export interface Phase2Result extends Phase1Result {
     distance: number
   }[]
   geminiOutput: GeminiOutput | null
+  sexOffenderCount: number | null
+  sexOffenderNearestMi: number | null
+  sexOffenderProximityScore: number | null
 }
 
 export enum CardState {
