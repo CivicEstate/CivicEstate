@@ -1,13 +1,13 @@
 # CivicEstate — Progress
 
-## Phase 0: Foundation ⬜ NOT STARTED
-- [ ] GitHub repo created, branches initialized (main + dev)
-- [ ] Vite + CRXJS scaffold, npm run dev confirmed
-- [ ] Folder structure created, all empty files in place
-- [ ] manifest.json locked (permissions, content script, service worker)
-- [ ] All types defined in src/types/index.ts
-- [ ] apiKeys.ts created and gitignored, apiKeys.example.ts committed
-- [ ] Extension communication bridge confirmed (content ↔ background ↔ popup)
+## Phase 0: Foundation ✅ COMPLETE
+- [x] GitHub repo created, branches initialized (main + dev) — main exists, no dev branch created
+- [x] Vite + CRXJS scaffold, npm run dev confirmed
+- [x] Folder structure created, all empty files in place
+- [x] manifest.json locked (permissions, content script, service worker)
+- [x] All types defined in src/types/index.ts
+- [x] apiKeys.ts created and gitignored, apiKeys.example.ts committed
+- [x] Extension communication bridge confirmed (content ↔ background ↔ popup)
 
 ## Phase 1: Profile System ⬜ NOT STARTED
 - [ ] ProfileForm.tsx with all 9 fields
