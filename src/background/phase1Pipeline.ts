@@ -35,6 +35,9 @@ export async function runPhase1Pipeline(
   console.log('[CivicEstate Phase1] Starting pipeline for', listings.length, 'listings')
   console.log('[CivicEstate Phase1] User profile:', userProfile)
 
+  // Clear stale batchAverages from previous run
+  await chrome.storage.local.remove('batchAverages')
+
   const validated: ExtractedListing[] = []
 
   for (const listing of listings) {
@@ -89,13 +92,18 @@ async function processListing(
   try {
     console.log('[CivicEstate Phase1] Processing:', listing.zpid, listing.rawAddress)
 
-    // Fire all 5 APIs in parallel
+    // Fire all 5 APIs in parallel — each wrapped so no single failure kills the listing
     const [commuteResult, floodResult, wildfireResult, crimeResult, walkResult] = await Promise.all([
-      fetchCommute(listing.lat, listing.lon, profile.workLat, profile.workLon),
-      fetchFloodZone(listing.lat, listing.lon),
-      fetchWildfireHazard(listing.lat, listing.lon),
-      fetchCrimeData(listing.rawAddress),
-      fetchWalkability(listing.lat, listing.lon),
+      fetchCommute(listing.lat, listing.lon, profile.workLat, profile.workLon)
+        .catch((e) => { console.error('[CivicEstate Phase1] commute failed:', e); return { carPeak: null, carOffpeak: null, transit: null, walk: null } }),
+      fetchFloodZone(listing.lat, listing.lon)
+        .catch((e) => { console.error('[CivicEstate Phase1] flood failed:', e); return { floodZone: null, floodRisk: null } }),
+      fetchWildfireHazard(listing.lat, listing.lon)
+        .catch((e) => { console.error('[CivicEstate Phase1] wildfire failed:', e); return { wildfireHazard: null } }),
+      fetchCrimeData(listing.rawAddress)
+        .catch((e) => { console.error('[CivicEstate Phase1] crime failed:', e); return { crimeGrade: null, crimeIndex: null } }),
+      fetchWalkability(listing.lat, listing.lon)
+        .catch((e) => { console.error('[CivicEstate Phase1] walk failed:', e); return { osmWalkabilityScore: null } }),
     ])
 
     console.log('[CivicEstate Phase1] Raw API results for', listing.zpid, {
