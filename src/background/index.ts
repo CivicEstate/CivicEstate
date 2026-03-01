@@ -47,6 +47,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'LISTINGS_EXTRACTED') {
     const listings = message.payload as ExtractedListing[]
     console.log('[CivicEstate background] Received', listings.length, 'listings from DOM parser')
+    chrome.storage.local.set({ currentListings: listings })
     chrome.storage.local.get('userProfile', (result) => {
       const profile = result.userProfile as UserProfile | undefined
       if (!profile) {
@@ -65,15 +66,17 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'TRIGGER_ANALYSIS') {
-    console.log('[CivicEstate background] TRIGGER_ANALYSIS — using mock listing')
-    chrome.storage.local.get('userProfile', (result) => {
+    chrome.storage.local.get(['userProfile', 'currentListings'], (result) => {
       const profile = result.userProfile as UserProfile | undefined
       if (!profile) {
         console.warn('[CivicEstate background] No user profile found, cannot run Phase 1')
         sendResponse({ status: 'error', reason: 'no-profile' })
         return
       }
-      runPhase1Pipeline([MOCK_LISTING], profile)
+      const currentListings = result.currentListings as ExtractedListing[] | undefined
+      const listings = currentListings && currentListings.length > 0 ? currentListings : [MOCK_LISTING]
+      console.log('[CivicEstate background] TRIGGER_ANALYSIS —', listings === currentListings ? `${listings.length} real listings` : 'using mock listing')
+      runPhase1Pipeline(listings, profile)
         .then(() => sendResponse({ status: 'phase1-started' }))
         .catch((err) => {
           console.error('[CivicEstate background] Phase 1 failed:', err)
