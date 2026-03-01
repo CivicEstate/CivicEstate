@@ -53,6 +53,7 @@
 - [x] googlePlaces.ts — 6 parallel Nearby Search fetches (grocery, pharmacy, park, hospital, childcare, school), Haversine distance in miles, per-category null fallback
 - [x] googleElevation.ts — path-based elevation query (500m north, 10 samples), avgSlope/maxSlope as percentages, adaFlag (>5%), null fallback on failure
 - [x] nces.ts — dual dataset: 8 IUSD schools + 8 YCJUSD schools, lat/lon bounding box selects dataset, Haversine distance sort, returns top 3 nearest, null on failure
+- [x] gemini.ts — Gemini 2.5 Flash analysis with structured prompt, responseMimeType JSON, Irvine avg deltas, sex offender delta computed outside prompt, strict validation of all GeminiOutput fields, single retry on parse failure, null on total failure
 
 ## Phase 6: Detail View UI ⬜ NOT STARTED
 
