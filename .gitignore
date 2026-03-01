@@ -1,6 +1,7 @@
 node_modules/
 dist/
 dist-zip/
+.DS_Store
 
 # API keys — never commit
 src/constants/apiKeys.ts
