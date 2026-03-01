@@ -184,7 +184,7 @@ export default function ProfileForm({
         <Card title="Where do you work?">
           <input
             type="text"
-            placeholder="e.g., San Francisco, CA"
+            placeholder="e.g., 4200 Campus Drive, Irvine, CA 92697"
             value={workInput}
             onChange={(e) => {
               setWorkInput(e.target.value);
