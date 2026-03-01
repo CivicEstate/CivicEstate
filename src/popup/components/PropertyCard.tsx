@@ -2,16 +2,7 @@ import React from 'react'
 import { Phase1Result, CardState } from '../../types'
 import ScoreBadge from './ScoreBadge'
 import { SkeletonCard, UnverifiedCard } from './LoadingStates'
-
-// ─── Irvine Averages ────────────────────────────────────────────────────────
-// TODO: replace with real values from scoring/irvineAverages.ts once Person B ships it
-const IRVINE_AVERAGES = {
-  lifestyle: 6.8,
-  accessibility: 6.5,
-  family: 7.2,
-  riskCost: 6.0,
-  overall: 6.8,
-}
+import { IRVINE_AVERAGES } from '../../background/scoring/irvineAverages'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 function formatPrice(price: number): string {
@@ -39,8 +30,8 @@ interface PropertyCardProps {
   result: Phase1Result
   cardState: CardState
   onClick: (zpid: string) => void
-  // Which commute mode matches the user profile — drives | transit | walk
   commuteMode?: 'drives' | 'transit' | 'walk'
+  batchAverages?: Phase1Result['scores'] | null
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -49,6 +40,7 @@ export default function PropertyCard({
   cardState,
   onClick,
   commuteMode = 'drives',
+  batchAverages,
 }: PropertyCardProps) {
 
   // Delegate to skeleton / unverified states
@@ -68,13 +60,14 @@ export default function PropertyCard({
       ? result.commute.walk
       : result.commute.carPeak
 
-  // Score deltas vs Irvine averages
+  // Score deltas — prefer batch averages from current search, fall back to Irvine constants
+  const avgs = batchAverages ?? IRVINE_AVERAGES
   const deltas = {
-    lifestyle: result.scores.lifestyle - IRVINE_AVERAGES.lifestyle,
-    accessibility: result.scores.accessibility - IRVINE_AVERAGES.accessibility,
-    family: result.scores.family - IRVINE_AVERAGES.family,
-    riskCost: result.scores.riskCost - IRVINE_AVERAGES.riskCost,
-    overall: result.scores.overall - IRVINE_AVERAGES.overall,
+    lifestyle: result.scores.lifestyle - avgs.lifestyle,
+    accessibility: result.scores.accessibility - avgs.accessibility,
+    family: result.scores.family - avgs.family,
+    riskCost: result.scores.riskCost - avgs.riskCost,
+    overall: result.scores.overall - avgs.overall,
   }
 
   const isPhase2Loading = cardState === CardState.PHASE2_LOADING
