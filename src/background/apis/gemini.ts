@@ -113,51 +113,92 @@ function buildUserPrompt(data: Phase2Result, profile: UserProfile): string {
 }
 
 function validateOutput(obj: unknown): GeminiOutput | null {
-  if (typeof obj !== 'object' || obj === null) return null
+  if (typeof obj !== 'object' || obj === null) {
+    console.error('[CivicEstate gemini][validate] obj is not an object:', obj)
+    return null
+  }
   const o = obj as Record<string, unknown>
 
   // scores
   const scores = o.scores as Record<string, unknown> | undefined
-  if (!scores || typeof scores !== 'object') return null
+  if (!scores || typeof scores !== 'object') {
+    console.error('[CivicEstate gemini][validate] scores missing or not object:', scores)
+    return null
+  }
   for (const k of ['lifestyle', 'accessibility', 'family', 'riskCost', 'overall']) {
-    if (typeof scores[k] !== 'number') return null
+    if (typeof scores[k] !== 'number') {
+      console.error(`[CivicEstate gemini][validate] scores.${k} is not a number:`, scores[k])
+      return null
+    }
   }
 
   // scoreDeltas
   const deltas = o.scoreDeltas as Record<string, unknown> | undefined
-  if (!deltas || typeof deltas !== 'object') return null
+  if (!deltas || typeof deltas !== 'object') {
+    console.error('[CivicEstate gemini][validate] scoreDeltas missing or not object:', deltas)
+    return null
+  }
   for (const k of ['lifestyle', 'accessibility', 'family', 'riskCost', 'overall']) {
-    if (typeof deltas[k] !== 'number') return null
+    if (typeof deltas[k] !== 'number') {
+      console.error(`[CivicEstate gemini][validate] scoreDeltas.${k} is not a number:`, deltas[k])
+      return null
+    }
   }
 
-  // narrative — must be non-empty string containing at least 2 numbers
-  if (typeof o.narrative !== 'string' || o.narrative.length === 0) return null
-  const numberMatches = o.narrative.match(/\d+/g)
-  if (!numberMatches || numberMatches.length < 2) return null
+  // narrative — must be a non-empty string longer than 50 chars
+  if (typeof o.narrative !== 'string' || o.narrative.length <= 50) {
+    console.error('[CivicEstate gemini][validate] narrative missing or too short:', o.narrative)
+    return null
+  }
 
-  // highlights — 4-7 items, each string starting with ✅ ❌ ⚠️ or 💰
-  if (!Array.isArray(o.highlights)) return null
-  if (o.highlights.length < 4 || o.highlights.length > 7) return null
-  const validPrefixes = ['✅', '❌', '⚠️', '💰']
-  if (!o.highlights.every((h: unknown) => typeof h === 'string' && validPrefixes.some(p => (h as string).startsWith(p)))) return null
+  // highlights — 4-7 items, each string starting with ✅ ❌ ⚠️ ⚠ or 💰
+  if (!Array.isArray(o.highlights)) {
+    console.error('[CivicEstate gemini][validate] highlights is not an array:', o.highlights)
+    return null
+  }
+  if (o.highlights.length < 4 || o.highlights.length > 7) {
+    console.error(`[CivicEstate gemini][validate] highlights length ${o.highlights.length} out of range 4-7:`, o.highlights)
+    return null
+  }
+  const VALID_PREFIXES = /^(✅|❌|⚠️?|💰)/u
+  for (const h of o.highlights) {
+    if (typeof h !== 'string' || !VALID_PREFIXES.test(h)) {
+      console.error('[CivicEstate gemini][validate] highlight item failed prefix check:', h)
+      return null
+    }
+  }
 
   // agentQuestions — exactly 1; coerce bare string → array
   if (typeof o.agentQuestions === 'string') {
     o.agentQuestions = [o.agentQuestions]
   }
-  if (!Array.isArray(o.agentQuestions) || o.agentQuestions.length !== 1) return null
-  if (!o.agentQuestions.every((q: unknown) => typeof q === 'string')) return null
+  if (!Array.isArray(o.agentQuestions) || o.agentQuestions.length !== 1) {
+    console.error(`[CivicEstate gemini][validate] agentQuestions length ${(o.agentQuestions as unknown[])?.length} (expected 1):`, o.agentQuestions)
+    return null
+  }
+  if (!o.agentQuestions.every((q: unknown) => typeof q === 'string')) {
+    console.error('[CivicEstate gemini][validate] agentQuestions contains non-string:', o.agentQuestions)
+    return null
+  }
 
   // chatContext
-  if (typeof o.chatContext !== 'string' || o.chatContext.length === 0) return null
+  if (typeof o.chatContext !== 'string' || o.chatContext.length === 0) {
+    console.error('[CivicEstate gemini][validate] chatContext missing or empty:', o.chatContext)
+    return null
+  }
 
   return obj as GeminiOutput
 }
 
 async function callGemini(data: Phase2Result, profile: UserProfile): Promise<unknown> {
+  const systemPrompt = buildSystemPrompt()
+  const userPrompt = buildUserPrompt(data, profile)
+  console.log('[CivicEstate gemini][callGemini] system prompt:\n', systemPrompt)
+  console.log('[CivicEstate gemini][callGemini] user prompt:\n', userPrompt)
+
   const body = {
-    system_instruction: { parts: [{ text: buildSystemPrompt() }] },
-    contents: [{ parts: [{ text: buildUserPrompt(data, profile) }] }],
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ parts: [{ text: userPrompt }] }],
     generationConfig: {
       temperature: 0.3,
       responseMimeType: 'application/json',
@@ -170,19 +211,31 @@ async function callGemini(data: Phase2Result, profile: UserProfile): Promise<unk
     body: JSON.stringify(body),
   })
 
+  console.log(`[CivicEstate gemini][callGemini] response status: ${res.status}, ok: ${res.ok}`)
+
   if (!res.ok) {
     console.error(`[CivicEstate gemini] HTTP ${res.status}:`, await res.text())
     return null
   }
 
   const json = await res.json()
+  console.log('[CivicEstate gemini][callGemini] raw response body:', json)
+
   const text = json.candidates?.[0]?.content?.parts?.[0]?.text
   if (typeof text !== 'string') {
     console.error('[CivicEstate gemini] No text in response:', json)
     return null
   }
 
-  return JSON.parse(text)
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch (parseErr) {
+    console.error('[CivicEstate gemini][callGemini] JSON.parse failed:', parseErr, '\nraw text:', text)
+    return null
+  }
+  console.log('[CivicEstate gemini][callGemini] parsed object:', parsed)
+  return parsed
 }
 
 function applySexOffenderDelta(
@@ -220,7 +273,7 @@ export async function runGeminiAnalysis(
     console.log('[CivicEstate gemini] analysis result:', result)
     return result
   } catch (err) {
-    console.error('[CivicEstate gemini] runGeminiAnalysis failed:', err)
+    console.error('[CivicEstate gemini] runGeminiAnalysis failed — full error:', err)
     return null
   }
 }

@@ -123,3 +123,26 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   sendResponse({ status: 'background-received' })
   return true
 })
+
+// DEBUG ONLY — remove before demo
+;(self as any).__debugPhase2 = async (zpid: string) => {
+  const data = await chrome.storage.local.get(
+    [zpid, 'userProfile']
+  )
+  const phase1Result = data[zpid]
+  const profile = data['userProfile']
+
+  console.log('Phase1Result:', phase1Result)
+  console.log('UserProfile:', profile)
+
+  if (!phase1Result || !profile) {
+    console.error('Missing data — check zpid and profile')
+    return
+  }
+
+  const result = await runPhase2Pipeline(phase1Result, profile)
+  console.log('Phase2Result:', result)
+  console.log('geminiOutput:', result?.geminiOutput)
+  console.log('nearbySchools:', result?.schools)
+  return result
+}
