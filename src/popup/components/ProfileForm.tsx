@@ -237,7 +237,7 @@ export default function ProfileForm({
             options={[
               { value: "none", label: "None", emoji: "🧍" },
               { value: "wheelchair", label: "Wheelchair", emoji: "♿" },
-              { value: "elderly", label: "Elderly", emoji: "🦯" },
+              { value: "elderly", label: "Elderly", emoji: "🧓" },
             ]}
           />
         </Card>
