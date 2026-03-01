@@ -35,8 +35,21 @@ export async function runPhase1Pipeline(
   console.log('[CivicEstate Phase1] Starting pipeline for', listings.length, 'listings')
   console.log('[CivicEstate Phase1] User profile:', userProfile)
 
-  // Clear stale batchAverages from previous run
-  await chrome.storage.local.remove('batchAverages')
+  // Clear stale batchAverages and old per-zpid results from previous run
+  const allStorage = await chrome.storage.local.get(null)
+  const keysToRemove = Object.keys(allStorage).filter((key) => {
+    // Remove batchAverages and any zpid-keyed Phase1Results (numeric or mock- prefixed)
+    if (key === 'batchAverages') return true
+    // Zpids are numeric strings or "mock-" prefixed — don't remove config keys
+    if (['userProfile', 'profileWeights', 'currentListings'].includes(key)) return false
+    const val = allStorage[key]
+    if (val && typeof val === 'object' && 'scores' in val) return true
+    return false
+  })
+  if (keysToRemove.length > 0) {
+    await chrome.storage.local.remove(keysToRemove)
+    console.log('[CivicEstate Phase1] Cleared', keysToRemove.length, 'stale keys from storage')
+  }
 
   const validated: ExtractedListing[] = []
 

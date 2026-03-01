@@ -123,106 +123,189 @@ function injectScorePanel(
   dataWrapper.appendChild(panel)
 }
 
+// ── State for current search session ─────────────────────────────────────────
+
+let currentZpidList: string[] = []
+let extractedZpids = new Set<string>()
+let cachedBatchAverages: typeof IRVINE_AVERAGES | null = null
+let resultCache = new Map<string, Phase1Result>()
+let pollInterval: ReturnType<typeof setInterval> | null = null
+let observer: MutationObserver | null = null
+let storageListener: ((changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void) | null = null
+let lastUrl = ''
+
+function cleanupPreviousSession(): void {
+  // Stop polling
+  if (pollInterval !== null) {
+    clearInterval(pollInterval)
+    pollInterval = null
+  }
+
+  // Disconnect observer
+  if (observer !== null) {
+    observer.disconnect()
+    observer = null
+  }
+
+  // Remove storage listener
+  if (storageListener !== null) {
+    chrome.storage.onChanged.removeListener(storageListener)
+    storageListener = null
+  }
+
+  // Remove injected panels from DOM
+  document.querySelectorAll('[id^="ce-scores-"]').forEach((el) => el.remove())
+
+  // Reset cached state
+  currentZpidList = []
+  extractedZpids = new Set()
+  cachedBatchAverages = null
+  resultCache = new Map()
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-const url = window.location.href
-const pageType = detectPageType(url)
-console.log(`[CivicEstate] Page type: ${pageType} — URL: ${url}`)
+function runContentScript(): void {
+  const url = window.location.href
 
-if (pageType === 'other') {
-  console.log('[CivicEstate] Not a search or detail page, skipping.')
-} else if (pageType === 'search') {
+  // Skip if URL hasn't changed (duplicate call)
+  if (url === lastUrl) return
+  lastUrl = url
+
+  // Clean up previous session state before starting fresh
+  cleanupPreviousSession()
+
+  const pageType = detectPageType(url)
+  console.log(`[CivicEstate] Page type: ${pageType} — URL: ${url}`)
+
+  if (pageType === 'other') {
+    console.log('[CivicEstate] Not a search or detail page, skipping.')
+    return
+  }
+
+  if (pageType === 'detail') {
+    console.log('[CivicEstate] Detail page detected, no extraction needed.')
+    return
+  }
+
+  // pageType === 'search'
   const nextData = findNextData()
 
   if (!nextData) {
     console.log('[CivicEstate] No __NEXT_DATA__ found on this page.')
-  } else {
-    const listings = extractListings(nextData)
-    console.log(`[CivicEstate] Extracted ${listings.length} listings:`, listings)
+    return
+  }
 
-    if (listings.length === 0) {
-      console.warn('[CivicEstate] Zero listings extracted — check __NEXT_DATA__ structure.')
-    } else {
-      chrome.storage.local.set({ currentListings: listings })
-      chrome.runtime.sendMessage(
-        { type: 'LISTINGS_EXTRACTED', payload: listings },
-        (response) => {
-          console.log('[CivicEstate] Background responded to LISTINGS_EXTRACTED:', response)
-        }
-      )
+  const listings = extractListings(nextData)
+  console.log(`[CivicEstate] Extracted ${listings.length} listings:`, listings)
 
-      // Track extracted zpids so we know which storage changes to react to
-      const zpidList = listings.map((l) => l.zpid)
-      const extractedZpids = new Set(zpidList)
-      let cachedBatchAverages: typeof IRVINE_AVERAGES | null = null
+  if (listings.length === 0) {
+    console.warn('[CivicEstate] Zero listings extracted — check __NEXT_DATA__ structure.')
+    return
+  }
 
-      // Cache results so we can retry injection when tiles appear in DOM
-      const resultCache = new Map<string, Phase1Result>()
+  chrome.storage.local.set({ currentListings: listings })
+  chrome.runtime.sendMessage(
+    { type: 'LISTINGS_EXTRACTED', payload: listings },
+    (response) => {
+      console.log('[CivicEstate] Background responded to LISTINGS_EXTRACTED:', response)
+    }
+  )
 
-      // Try to inject all cached results that don't have panels yet
-      function tryInjectAll(): void {
-        for (const [zpid, result] of resultCache) {
-          if (!document.getElementById(`ce-scores-${zpid}`)) {
-            injectScorePanel(zpid, result, cachedBatchAverages ?? IRVINE_AVERAGES)
-          }
-        }
+  // Track extracted zpids so we know which storage changes to react to
+  currentZpidList = listings.map((l) => l.zpid)
+  extractedZpids = new Set(currentZpidList)
+
+  // Try to inject all cached results that don't have panels yet
+  function tryInjectAll(): void {
+    for (const [zpid, result] of resultCache) {
+      if (!document.getElementById(`ce-scores-${zpid}`)) {
+        injectScorePanel(zpid, result, cachedBatchAverages ?? IRVINE_AVERAGES)
       }
-
-      // Poll storage for results and inject — covers race conditions + lazy-loaded tiles
-      function pollAndInject(): void {
-        chrome.storage.local.get([...zpidList, 'batchAverages'], (data) => {
-          if (data.batchAverages) {
-            cachedBatchAverages = data.batchAverages as typeof IRVINE_AVERAGES
-          }
-          for (const zpid of zpidList) {
-            const result = data[zpid] as Phase1Result | undefined
-            if (result?.scores) {
-              resultCache.set(zpid, result)
-            }
-          }
-          tryInjectAll()
-        })
-      }
-
-      // Listen for Phase 1 results via chrome.storage.onChanged (instant reaction)
-      chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName !== 'local') return
-
-        if (changes.batchAverages?.newValue) {
-          cachedBatchAverages = changes.batchAverages.newValue as typeof IRVINE_AVERAGES
-        }
-
-        for (const key of Object.keys(changes)) {
-          if (!extractedZpids.has(key)) continue
-          const result = changes[key]?.newValue as Phase1Result | undefined
-          if (!result?.scores) continue
-          resultCache.set(key, result)
-          injectScorePanel(key, result, cachedBatchAverages ?? IRVINE_AVERAGES)
-        }
-      })
-
-      // MutationObserver: retry injection when Zillow adds/recycles tiles
-      const observer = new MutationObserver(() => {
-        if (resultCache.size > 0) tryInjectAll()
-      })
-      observer.observe(document.body, { childList: true, subtree: true })
-
-      // Periodic poll: catch anything missed by listener or observer
-      const pollInterval = setInterval(() => {
-        pollAndInject()
-        // Stop polling once all listings have panels
-        const allInjected = zpidList.every((z) => document.getElementById(`ce-scores-${z}`))
-        if (allInjected) {
-          console.log('[CivicEstate] All listings injected, stopping poll')
-          clearInterval(pollInterval)
-        }
-      }, 2000)
-
-      // Initial poll to catch results already in storage
-      pollAndInject()
     }
   }
-} else {
-  // detail page — Phase 2 pipeline will handle this later
-  console.log('[CivicEstate] Detail page detected, no extraction needed.')
+
+  // Poll storage for results and inject — covers race conditions + lazy-loaded tiles
+  function pollAndInject(): void {
+    chrome.storage.local.get([...currentZpidList, 'batchAverages'], (data) => {
+      if (data.batchAverages) {
+        cachedBatchAverages = data.batchAverages as typeof IRVINE_AVERAGES
+      }
+      for (const zpid of currentZpidList) {
+        const result = data[zpid] as Phase1Result | undefined
+        if (result?.scores) {
+          resultCache.set(zpid, result)
+        }
+      }
+      tryInjectAll()
+    })
+  }
+
+  // Listen for Phase 1 results via chrome.storage.onChanged (instant reaction)
+  storageListener = (changes, areaName) => {
+    if (areaName !== 'local') return
+
+    if (changes.batchAverages?.newValue) {
+      cachedBatchAverages = changes.batchAverages.newValue as typeof IRVINE_AVERAGES
+    }
+
+    for (const key of Object.keys(changes)) {
+      if (!extractedZpids.has(key)) continue
+      const result = changes[key]?.newValue as Phase1Result | undefined
+      if (!result?.scores) continue
+      resultCache.set(key, result)
+      injectScorePanel(key, result, cachedBatchAverages ?? IRVINE_AVERAGES)
+    }
+  }
+  chrome.storage.onChanged.addListener(storageListener)
+
+  // MutationObserver: retry injection when Zillow adds/recycles tiles
+  observer = new MutationObserver(() => {
+    if (resultCache.size > 0) tryInjectAll()
+  })
+  observer.observe(document.body, { childList: true, subtree: true })
+
+  // Periodic poll: catch anything missed by listener or observer
+  pollInterval = setInterval(() => {
+    pollAndInject()
+    // Stop polling once all listings have panels
+    const allInjected = currentZpidList.every((z) => document.getElementById(`ce-scores-${z}`))
+    if (allInjected) {
+      console.log('[CivicEstate] All listings injected, stopping poll')
+      if (pollInterval !== null) {
+        clearInterval(pollInterval)
+        pollInterval = null
+      }
+    }
+  }, 2000)
+
+  // Initial poll to catch results already in storage
+  pollAndInject()
 }
+
+// ── SPA navigation detection ─────────────────────────────────────────────────
+// Zillow is a Next.js SPA — URL changes don't reload the content script.
+// Detect navigation and re-run extraction with fresh state.
+
+function watchForNavigation(): void {
+  // Intercept pushState / replaceState
+  const origPushState = history.pushState.bind(history)
+  const origReplaceState = history.replaceState.bind(history)
+
+  history.pushState = function (...args) {
+    origPushState(...args)
+    setTimeout(runContentScript, 300)
+  }
+  history.replaceState = function (...args) {
+    origReplaceState(...args)
+    setTimeout(runContentScript, 300)
+  }
+
+  window.addEventListener('popstate', () => {
+    setTimeout(runContentScript, 300)
+  })
+}
+
+// Initial run
+runContentScript()
+watchForNavigation()
