@@ -163,11 +163,11 @@ export default function PropertyCard({
 
       {/* ── Five score badges ── */}
       <div style={{ display: 'flex', gap: 6 }}>
-        <ScoreBadge label="Lifestyle" score={result.scores.lifestyle} delta={deltas.lifestyle} size="sm" />
-        <ScoreBadge label="Access" score={result.scores.accessibility} delta={deltas.accessibility} size="sm" />
-        <ScoreBadge label="Family" score={result.scores.family} delta={deltas.family} size="sm" />
-        <ScoreBadge label="Risk" score={result.scores.riskCost} delta={deltas.riskCost} size="sm" />
-        <ScoreBadge label="Overall" score={result.scores.overall} delta={deltas.overall} size="sm" />
+        <ScoreBadge label="🌟 Lifestyle" score={result.scores.lifestyle} delta={deltas.lifestyle} size="sm" />
+        <ScoreBadge label="🚇 Access" score={result.scores.accessibility} delta={deltas.accessibility} size="sm" />
+        <ScoreBadge label="🏫 Family" score={result.scores.family} delta={deltas.family} size="sm" />
+        <ScoreBadge label="🛡️ Risk" score={result.scores.riskCost} delta={deltas.riskCost} size="sm" />
+        <ScoreBadge label="⭐ Overall" score={result.scores.overall} delta={deltas.overall} size="sm" />
       </div>
 
       {/* ── Quick-scan stats row ── */}
