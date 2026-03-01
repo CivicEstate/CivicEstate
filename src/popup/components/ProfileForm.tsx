@@ -1,27 +1,40 @@
 import React, { useState } from "react";
-import { UserProfile } from '../../types/index';
 
-// ── Props ─────────────────────────────────────────────────────────────────
+// ── Types (import from src/types/index.ts in production) ──────────────────
+export interface UserProfile {
+  mode: "drives" | "transit" | "walks";
+  workLat: number | null;
+  workLon: number | null;
+  remoteFrequency: "fully-remote" | "hybrid" | "in-office";
+  hasKids: boolean;
+  hasPet: boolean;
+  mobility: "none" | "wheelchair" | "elderly";
+  ageRange: "20s-30s" | "40s-50s" | "60s+";
+  taxSensitive: boolean;
+}
+
+// ── Props — Person B wires these when storage/geocoding is ready ───────────
 interface ProfileFormProps {
   initialProfile?: UserProfile;
   onSave?: (profile: UserProfile) => void;
-  onAnalyze?: () => void;
+  onGeocodeWorkLocation?: (address: string) => Promise<{ lat: number; lon: number } | null>;
+  isSaving?: boolean;
   geocodeError?: string | null;
 }
 
 const DEFAULT_PROFILE: UserProfile = {
   mode: "drives",
-  workLat: 0,
-  workLon: 0,
+  workLat: null,
+  workLon: null,
   remoteFrequency: "hybrid",
   hasKids: false,
   hasPet: false,
   mobility: "none",
-  ageRange: "20s30s",
+  ageRange: "20s-30s",
   taxSensitive: false,
 };
 
-// ── Sub-components ────────────────────────────────────────────────────────
+// sub components
 
 interface TileOption<T extends string> {
   value: T;
@@ -112,64 +125,42 @@ function ToggleRow({
   );
 }
 
-// ── Main Component ─────────────────────────────────────────────────────────
+// main component
 export default function ProfileForm({
   initialProfile,
   onSave,
-  onAnalyze,
+  onGeocodeWorkLocation,
+  isSaving = false,
   geocodeError = null,
 }: ProfileFormProps) {
   const [profile, setProfile] = useState<UserProfile>(initialProfile ?? DEFAULT_PROFILE);
   const [workInput, setWorkInput] = useState("");
   const [geocodeState, setGeocodeState] = useState<"idle" | "loading" | "resolved" | "error">("idle");
-  const [savedConfirm, setSavedConfirm] = useState(false);
-  const [analyzeHint, setAnalyzeHint] = useState(false);
 
   const set = <K extends keyof UserProfile>(key: K, val: UserProfile[K]) =>
     setProfile((p) => ({ ...p, [key]: val }));
 
   const handleWorkBlur = async () => {
     if (!workInput.trim()) return;
-    setGeocodeState("loading");
-    const result = await new Promise<{ lat: number; lon: number } | null>((resolve) => {
-      chrome.runtime.sendMessage(
-        { type: 'GEOCODE_WORK_LOCATION', payload: workInput.trim() },
-        (response) => {
-          if (chrome.runtime.lastError || !response || response.error) {
-            resolve(null);
-          } else {
-            resolve({ lat: response.lat, lon: response.lon });
-          }
-        }
-      );
-    });
-    if (result) {
-      set("workLat", result.lat);
-      set("workLon", result.lon);
-      setGeocodeState("resolved");
+    if (onGeocodeWorkLocation) {
+      setGeocodeState("loading");
+      const result = await onGeocodeWorkLocation(workInput.trim()).catch(() => null);
+      if (result) {
+        set("workLat", result.lat);
+        set("workLon", result.lon);
+        setGeocodeState("resolved");
+      } else {
+        setGeocodeState("error");
+      }
     } else {
-      setGeocodeState("error");
+      // Fallback until Person B wires geocoding
+      set("workLat", 33.6846);
+      set("workLon", -117.8265);
+      setGeocodeState("resolved");
     }
   };
 
-  const locationResolved = profile.workLat !== 0 && profile.workLon !== 0;
-
-  function handleSave() {
-    onSave?.(profile);
-    setSavedConfirm(true);
-    setTimeout(() => setSavedConfirm(false), 2000);
-  }
-
-  function handleAnalyze() {
-    if (!locationResolved) {
-      setAnalyzeHint(true);
-      setTimeout(() => setAnalyzeHint(false), 3000);
-      return;
-    }
-    chrome.runtime.sendMessage({ type: 'TRIGGER_ANALYSIS', payload: profile });
-    console.log('[CivicEstate] switching to Results view');
-    onAnalyze?.();
-  }
+  const canSave = profile.workLat !== null && profile.workLon !== null;
 
   return (
     <div style={s.root}>
@@ -185,7 +176,7 @@ export default function ProfileForm({
             options={[
               { value: "drives", label: "Drives", emoji: "🚗" },
               { value: "transit", label: "Transit", emoji: "🚌" },
-              { value: "walk", label: "Walks", emoji: "🚶" },
+              { value: "walks", label: "Walks", emoji: "🚶" },
             ]}
           />
         </Card>
@@ -198,8 +189,8 @@ export default function ProfileForm({
             onChange={(e) => {
               setWorkInput(e.target.value);
               setGeocodeState("idle");
-              set("workLat", 0);
-              set("workLon", 0);
+              set("workLat", null);
+              set("workLon", null);
             }}
             onBlur={handleWorkBlur}
             style={{
@@ -223,9 +214,9 @@ export default function ProfileForm({
             value={profile.remoteFrequency}
             onChange={(v) => set("remoteFrequency", v)}
             options={[
-              { value: "remote", label: "Fully Remote", emoji: "🏠" },
+              { value: "fully-remote", label: "Fully Remote", emoji: "🏠" },
               { value: "hybrid", label: "Hybrid", emoji: "📅" },
-              { value: "office", label: "In-Office", emoji: "🏢" },
+              { value: "in-office", label: "In-Office", emoji: "🏢" },
             ]}
           />
         </Card>
@@ -258,30 +249,19 @@ export default function ProfileForm({
             onChange={(e) => set("ageRange", e.target.value as UserProfile["ageRange"])}
             aria-label="Age range"
           >
-            <option value="20s30s">20s–30s</option>
-            <option value="40s50s">40s–50s</option>
-            <option value="60s">60s+</option>
+            <option value="20s-30s">20s–30s</option>
+            <option value="40s-50s">40s–50s</option>
+            <option value="60s+">60s+</option>
           </select>
         </Card>
 
         <button
-          onClick={handleSave}
-          style={s.saveBtn}
+          onClick={() => canSave && !isSaving && onSave?.(profile)}
+          disabled={!canSave || isSaving}
+          style={{ ...s.saveBtn, ...(!canSave || isSaving ? s.saveBtnDisabled : {}) }}
           aria-label="Save profile"
         >
-          {savedConfirm ? "Profile saved ✓" : "Save Profile"}
-        </button>
-
-        {analyzeHint && (
-          <div style={s.analyzeHint}>Enter and confirm a work location first</div>
-        )}
-
-        <button
-          onClick={handleAnalyze}
-          style={{ ...s.analyzeBtn, ...(!locationResolved ? s.analyzeBtnDisabled : {}) }}
-          aria-label="Analyze listings"
-        >
-          Analyze Listings
+          {isSaving ? "Saving…" : "Save Profile"}
         </button>
 
       </div>
@@ -290,18 +270,19 @@ export default function ProfileForm({
 }
 
 // ── Styles ─────────────────────────────────────────────────────────────────
-const AMBER = "#e8a020";
-const AMBER_BG = "#fef8eb";
+const BLUE = "#1840d1";
+const BLUE_BG = "#eff3fe";
 
 const s: Record<string, React.CSSProperties> = {
   root: {
-    background: "#f5f0e8",
+    background: "linear-gradient(160deg, #e8effe 0%, #dce8fd 50%, #cfddfb 100%)",
     fontFamily: "'Nunito', system-ui, sans-serif",
     color: "#2d2a24",
+    minHeight: "100vh",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    padding: "32px 16px 48px",
+    padding: "40px 20px 80px",
   },
   pageTitle: {
     fontSize: 34,
@@ -358,8 +339,8 @@ const s: Record<string, React.CSSProperties> = {
     transition: "all 0.15s",
   },
   tileActive: {
-    border: `2px solid ${AMBER}`,
-    background: AMBER_BG,
+    border: `2px solid ${BLUE}`,
+    background: BLUE_BG,
   },
   tileSmall: {
     padding: "16px 8px 14px",
@@ -403,7 +384,7 @@ const s: Record<string, React.CSSProperties> = {
     padding: 0,
     transition: "background 0.2s",
   },
-  pillOn: { background: AMBER },
+  pillOn: { background: BLUE },
   pillKnob: {
     position: "absolute",
     top: 4,
@@ -435,39 +416,20 @@ const s: Record<string, React.CSSProperties> = {
     padding: 18,
     borderRadius: 16,
     border: "none",
-    background: "linear-gradient(140deg, #f5a623, #e8861a)",
+    background: "linear-gradient(140deg, #3a62e8, #1840d1)",
     color: "#fff",
     fontSize: 17,
     fontWeight: 800,
     fontFamily: "inherit",
     cursor: "pointer",
-    boxShadow: "0 6px 24px rgba(232,140,26,0.38)",
+    boxShadow: "0 6px 24px rgba(24,64,209,0.38)",
     marginTop: 4,
   },
-  analyzeBtn: {
-    width: "100%",
-    padding: 18,
-    borderRadius: 16,
-    border: "none",
-    background: "linear-gradient(140deg, #3a8f5c, #2a7048)",
-    color: "#fff",
-    fontSize: 17,
-    fontWeight: 800,
-    fontFamily: "inherit",
-    cursor: "pointer",
-    boxShadow: "0 6px 24px rgba(42,112,72,0.35)",
-    marginTop: 4,
-  },
-  analyzeBtnDisabled: {
+  saveBtnDisabled: {
     background: "#d4cfc6",
     boxShadow: "none",
     cursor: "not-allowed",
-  },
-  analyzeHint: {
-    fontSize: 13,
-    color: "#c04040",
-    fontWeight: 600,
-    textAlign: "center" as const,
-    marginTop: 6,
+    color: "#fff",
   },
 };
+ 
