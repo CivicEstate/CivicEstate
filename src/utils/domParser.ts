@@ -112,3 +112,19 @@ export function extractListings(nextData: Record<string, unknown>): ExtractedLis
   return extracted
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */
+
+export interface ListingTextFlags {
+  listingMentionsStairs: boolean
+  listingMentionsElevator: boolean
+}
+
+const STAIRS_PATTERN = /\b(stairs|staircase|stairway|steps|multi[- ]?level|split[- ]?level|tri[- ]?level)\b/i
+const ELEVATOR_PATTERN = /\b(elevator|lift|ada[- ]?accessible)\b/i
+
+export function parseListingDescription(description: string | null): ListingTextFlags {
+  if (!description) return { listingMentionsStairs: false, listingMentionsElevator: false }
+  return {
+    listingMentionsStairs: STAIRS_PATTERN.test(description),
+    listingMentionsElevator: ELEVATOR_PATTERN.test(description),
+  }
+}
