@@ -107,6 +107,20 @@ export interface Phase2Result extends Phase1Result {
   sexOffenderProximityScore: number | null
 }
 
+export interface ProfileWeights {
+  commuteWeight: number
+  walkabilityWeight: number
+  slopeWeight: number
+  crimeWeight: number
+  floodWeight: number
+  wildfireWeight: number
+  taxWeight: number
+  schoolWeight: number
+  parkWeight: number
+  childcareWeight: number
+  priceDeltaWeight: number
+}
+
 export enum CardState {
   IDLE = 'IDLE',
   LOADING = 'LOADING',

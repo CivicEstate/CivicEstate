@@ -9,7 +9,16 @@
 - [x] apiKeys.ts created and gitignored, apiKeys.example.ts committed
 - [x] Extension communication bridge confirmed (content ↔ background ↔ popup)
 
-## Phase 1: Profile System ⬜ NOT STARTED
+## Phase 1: Profile System ✅ COMPLETE
+- [x] ProfileForm.tsx with all 9 fields
+- [x] Work location geocoding via Google Maps
+- [x] Profile persistence in chrome.storage.local
+- [x] useProfile hook
+- [x] Profile validation and defaults
+- [x] Analyze button with location gate
+- [x] Save confirmation toast
+- [x] App.tsx shell with profile/results view state
+- [x] All API host_permissions added to manifest
 
 ## Phase 2: Zillow DOM Parsing ⬜ NOT STARTED
 
