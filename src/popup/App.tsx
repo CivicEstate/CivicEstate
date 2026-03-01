@@ -1,18 +1,22 @@
 import { useState } from 'react'
+import ProfileForm from './components/ProfileForm'
+
+type View = 'profile' | 'results'
 
 export default function App() {
-  const [response, setResponse] = useState<string | null>(null)
+  const [view, setView] = useState<View>('profile')
 
-  function handleTest() {
-    chrome.runtime.sendMessage({ type: 'popup-ping' }, (res) => {
-      setResponse(res?.status ?? 'no response')
-    })
+  if (view === 'results') {
+    console.log('[CivicEstate] Results view — built in Phase 4')
+    return <div>Results view coming in Phase 4</div>
   }
 
   return (
-    <div>
-      <button onClick={handleTest}>Test background</button>
-      {response && <p>{response}</p>}
-    </div>
+    <ProfileForm
+      onAnalyze={() => {
+        console.log('[CivicEstate] switching to Results view')
+        setView('results')
+      }}
+    />
   )
 }

@@ -1,12 +1,11 @@
 import React, { useState } from "react";
 import { UserProfile } from '../../types/index';
 
-// ── Props — Person B wires these when storage/geocoding is ready ───────────
+// ── Props ─────────────────────────────────────────────────────────────────
 interface ProfileFormProps {
   initialProfile?: UserProfile;
   onSave?: (profile: UserProfile) => void;
-  onGeocodeWorkLocation?: (address: string) => Promise<{ lat: number; lon: number } | null>;
-  isSaving?: boolean;
+  onAnalyze?: () => void;
   geocodeError?: string | null;
 }
 
@@ -117,12 +116,14 @@ function ToggleRow({
 export default function ProfileForm({
   initialProfile,
   onSave,
-  isSaving = false,
+  onAnalyze,
   geocodeError = null,
 }: ProfileFormProps) {
   const [profile, setProfile] = useState<UserProfile>(initialProfile ?? DEFAULT_PROFILE);
   const [workInput, setWorkInput] = useState("");
   const [geocodeState, setGeocodeState] = useState<"idle" | "loading" | "resolved" | "error">("idle");
+  const [savedConfirm, setSavedConfirm] = useState(false);
+  const [analyzeHint, setAnalyzeHint] = useState(false);
 
   const set = <K extends keyof UserProfile>(key: K, val: UserProfile[K]) =>
     setProfile((p) => ({ ...p, [key]: val }));
@@ -151,7 +152,24 @@ export default function ProfileForm({
     }
   };
 
-  const canSave = profile.workLat !== 0 && profile.workLon !== 0;
+  const locationResolved = profile.workLat !== 0 && profile.workLon !== 0;
+
+  function handleSave() {
+    onSave?.(profile);
+    setSavedConfirm(true);
+    setTimeout(() => setSavedConfirm(false), 2000);
+  }
+
+  function handleAnalyze() {
+    if (!locationResolved) {
+      setAnalyzeHint(true);
+      setTimeout(() => setAnalyzeHint(false), 3000);
+      return;
+    }
+    chrome.runtime.sendMessage({ type: 'TRIGGER_ANALYSIS', payload: profile });
+    console.log('[CivicEstate] switching to Results view');
+    onAnalyze?.();
+  }
 
   return (
     <div style={s.root}>
@@ -247,12 +265,23 @@ export default function ProfileForm({
         </Card>
 
         <button
-          onClick={() => canSave && !isSaving && onSave?.(profile)}
-          disabled={!canSave || isSaving}
-          style={{ ...s.saveBtn, ...(!canSave || isSaving ? s.saveBtnDisabled : {}) }}
+          onClick={handleSave}
+          style={s.saveBtn}
           aria-label="Save profile"
         >
-          {isSaving ? "Saving…" : "Save Profile"}
+          {savedConfirm ? "Profile saved ✓" : "Save Profile"}
+        </button>
+
+        {analyzeHint && (
+          <div style={s.analyzeHint}>Enter and confirm a work location first</div>
+        )}
+
+        <button
+          onClick={handleAnalyze}
+          style={{ ...s.analyzeBtn, ...(!locationResolved ? s.analyzeBtnDisabled : {}) }}
+          aria-label="Analyze listings"
+        >
+          Analyze Listings
         </button>
 
       </div>
@@ -416,10 +445,30 @@ const s: Record<string, React.CSSProperties> = {
     boxShadow: "0 6px 24px rgba(232,140,26,0.38)",
     marginTop: 4,
   },
-  saveBtnDisabled: {
+  analyzeBtn: {
+    width: "100%",
+    padding: 18,
+    borderRadius: 16,
+    border: "none",
+    background: "linear-gradient(140deg, #3a8f5c, #2a7048)",
+    color: "#fff",
+    fontSize: 17,
+    fontWeight: 800,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    boxShadow: "0 6px 24px rgba(42,112,72,0.35)",
+    marginTop: 4,
+  },
+  analyzeBtnDisabled: {
     background: "#d4cfc6",
     boxShadow: "none",
     cursor: "not-allowed",
-    color: "#fff",
+  },
+  analyzeHint: {
+    fontSize: 13,
+    color: "#c04040",
+    fontWeight: 600,
+    textAlign: "center" as const,
+    marginTop: 6,
   },
 };
