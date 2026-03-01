@@ -1,7 +1,8 @@
-import { UserProfile, ExtractedListing } from '../types/index'
+import { UserProfile, ExtractedListing, Phase1Result, Phase2Result } from '../types/index'
 import { GOOGLE_MAPS_KEY } from '../constants/apiKeys'
 import { geminiWeights, DEFAULT_PROFILE_WEIGHTS } from './apis/geminiWeights'
 import { runPhase1Pipeline, MOCK_LISTING } from './phase1Pipeline'
+import { runPhase2Pipeline } from './phase2Pipeline'
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[CivicEstate background] received:', message, 'from:', sender)
@@ -86,6 +87,62 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true
   }
 
+  if (message.type === 'TRIGGER_PHASE2') {
+    const zpid = message.zpid as string
+    chrome.storage.local.get([zpid, 'userProfile'], (result) => {
+      const phase1Result = result[zpid] as Phase1Result | undefined
+      const profile = result.userProfile as UserProfile | undefined
+
+      if (!phase1Result || !profile) {
+        console.warn('[CivicEstate background] Missing data for Phase 2:', {
+          hasPhase1: !!phase1Result,
+          hasProfile: !!profile,
+        })
+        sendResponse({ status: 'error', reason: !phase1Result ? 'no-phase1-result' : 'no-profile' })
+        return
+      }
+
+      // Notify popup: card is now loading Phase 2
+      chrome.runtime.sendMessage({ type: 'PHASE2_LOADING', zpid }).catch(() => {})
+
+      runPhase2Pipeline(phase1Result, profile)
+        .then((phase2Result: Phase2Result) => {
+          chrome.storage.local.set({ [zpid]: phase2Result })
+          chrome.runtime.sendMessage({ type: 'PHASE2_RESULT_READY', zpid }).catch(() => {})
+          sendResponse({ status: 'phase2-complete' })
+        })
+        .catch((err: unknown) => {
+          console.error('[CivicEstate background] Phase 2 failed:', err)
+          chrome.runtime.sendMessage({ type: 'PHASE2_ERROR', zpid }).catch(() => {})
+          sendResponse({ status: 'error', reason: String(err) })
+        })
+    })
+    return true
+  }
+
   sendResponse({ status: 'background-received' })
   return true
 })
+
+// DEBUG ONLY — remove before demo
+;(self as any).__debugPhase2 = async (zpid: string) => {
+  const data = await chrome.storage.local.get(
+    [zpid, 'userProfile']
+  )
+  const phase1Result = data[zpid]
+  const profile = data['userProfile']
+
+  console.log('Phase1Result:', phase1Result)
+  console.log('UserProfile:', profile)
+
+  if (!phase1Result || !profile) {
+    console.error('Missing data — check zpid and profile')
+    return
+  }
+
+  const result = await runPhase2Pipeline(phase1Result, profile)
+  console.log('Phase2Result:', result)
+  console.log('geminiOutput:', result?.geminiOutput)
+  console.log('nearbySchools:', result?.schools)
+  return result
+}
