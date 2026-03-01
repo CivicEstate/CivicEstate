@@ -46,7 +46,8 @@
 - [x] manifest.json — added api.usa.gov host permission for FBI CDE API
 - [x] Build verified — vite build + tsc --noEmit pass clean
 
-## Phase 4: Search Results Card UI ⬜ NOT STARTED
+## Phase 4: Search Results Card UI 🔧 IN PROGRESS
+- [x] batchAverages aggregation — Phase 1 pipeline computes mean of all 5 score fields after Promise.all, stores to chrome.storage.local as `batchAverages`
 
 ## Phase 5: Phase 2 API Pipeline ⬜ NOT STARTED
 
