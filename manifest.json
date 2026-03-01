@@ -31,16 +31,16 @@
   "action": {
     "default_popup": "src/popup/index.html",
     "default_icon": {
-      "16": "icons/logo.png",
-      "32": "icons/logo.png",
-      "48": "icons/logo.png",
-      "128": "icons/logo.png"
+      "16": "icons/logo_house_art.png",
+      "32": "icons/logo_house_art.png",
+      "48": "icons/logo_house_art.png",
+      "128": "icons/logo_house_art.png"
     }
   },
   "icons": {
-    "16": "icons/logo.png",
-    "32": "icons/logo.png",
-    "48": "icons/logo.png",
-    "128": "icons/logo.png"
+    "16": "icons/logo_house_art.png",
+    "32": "icons/logo_house_art.png",
+    "48": "icons/logo_house_art.png",
+    "128": "icons/logo_house_art.png"
   }
 }
