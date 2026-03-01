@@ -20,7 +20,13 @@
 - [x] App.tsx shell with profile/results view state
 - [x] All API host_permissions added to manifest
 
-## Phase 2: Zillow DOM Parsing ⬜ NOT STARTED
+## Phase 2: Zillow DOM Parsing 🔧 IN PROGRESS
+- [x] Page type detection (search vs detail vs other) via URL patterns
+- [x] __NEXT_DATA__ script tag locator with JSON parse and root key logging
+- [x] extractListings() with confirmed live path: props.pageProps.searchPageState.cat1.searchResults.listResults
+- [x] Field mapping: zpid, address, latLong, unformattedPrice, beds, baths, area→sqft, zestimate, priceDelta/flag
+- [x] Filters out listings missing required fields, caps at 10
+- [x] Sends LISTINGS_EXTRACTED message to background with payload
 
 
 ## Phase 3: Phase 1 API Pipeline ⬜ NOT STARTED
