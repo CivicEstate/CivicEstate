@@ -56,7 +56,23 @@
 - [x] App.tsx — stripped to profile-only, Analyze sends TRIGGER_ANALYSIS then window.close()
 - [x] Build verified — vite build + tsc --noEmit pass clean
 
-## Phase 5: Phase 2 API Pipeline ⬜ NOT STARTED
+## Phase 5: Phase 2 API Pipeline ✅ COMPLETE
+- [x] googlePlaces.ts — 6 parallel Nearby Search fetches (grocery, pharmacy, park, hospital, childcare, school), Haversine distance in miles, per-category null fallback
+- [x] googleElevation.ts — path-based elevation query (500m north, 10 samples), avgSlope/maxSlope as percentages, adaFlag (>5%), null fallback on failure
+- [x] nces.ts — dual dataset: 8 IUSD schools + 8 YCJUSD schools, lat/lon bounding box selects dataset, Haversine distance sort, returns top 3 nearest, null on failure
+- [x] gemini.ts — Gemini 2.5 Flash analysis with structured prompt, responseMimeType JSON, Irvine avg deltas, sex offender delta computed outside prompt, strict validation of all GeminiOutput fields, single retry on parse failure, null on total failure
+
+## Phase 5b: Wire Phase 2 into Content Script Panels ✅ COMPLETE
+- [x] Click handler on injected score panels — sends TRIGGER_PHASE2 message, shows indigo border + "Generating insights..." status, prevents duplicate clicks and Zillow tile navigation
+- [x] Storage listener extended — detects Phase2Result (geminiOutput key), renders narrative, highlights list, first agent question on success (green border), "AI insights unavailable" on null (amber border)
+
+## Phase 5c: DevTools Smoke Test Script ✅ COMPLETE
+- [x] tests/smokeTest.js — paste-and-run E2E validation script for Zillow tab DevTools console
+- [x] Step 1: confirms background service worker is alive via TRIGGER_ANALYSIS
+- [x] Step 2: waits for Phase 1, validates zpid keys and Phase1Result scores in chrome.storage
+- [x] Step 3: triggers Phase 2 for first zpid, validates response
+- [x] Step 4: validates full Phase2Result — geminiOutput (scores, scoreDeltas, narrative, highlights, agentQuestions, chatContext), nearbyPlaces, elevationData, nearbySchools
+- [x] Step 5-6: manual visual check instructions + PASS/FAIL summary
 
 ## Phase 6: Detail View UI ⬜ NOT STARTED
 
