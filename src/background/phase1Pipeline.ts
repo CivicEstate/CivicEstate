@@ -62,7 +62,21 @@ export async function runPhase1Pipeline(
   console.log('[CivicEstate Phase1] Using weights:', weights)
 
   // Process all listings in parallel
-  await Promise.all(validated.map((listing) => processListing(listing, userProfile, weights)))
+  const allScores = await Promise.all(validated.map((listing) => processListing(listing, userProfile, weights)))
+
+  // Compute batch averages for UI deltas
+  const validScores = allScores.filter((s): s is Phase1Result['scores'] => s !== null)
+  if (validScores.length > 0) {
+    const batchAverages = {
+      lifestyle: Math.round(validScores.reduce((sum, s) => sum + s.lifestyle, 0) / validScores.length * 10) / 10,
+      accessibility: Math.round(validScores.reduce((sum, s) => sum + s.accessibility, 0) / validScores.length * 10) / 10,
+      family: Math.round(validScores.reduce((sum, s) => sum + s.family, 0) / validScores.length * 10) / 10,
+      riskCost: Math.round(validScores.reduce((sum, s) => sum + s.riskCost, 0) / validScores.length * 10) / 10,
+      overall: Math.round(validScores.reduce((sum, s) => sum + s.overall, 0) / validScores.length * 10) / 10,
+    }
+    await chrome.storage.local.set({ batchAverages })
+    console.log('[CivicEstate Phase1] batchAverages:', batchAverages)
+  }
 
   console.log('[CivicEstate Phase1] Pipeline complete for', validated.length, 'listings')
 }
@@ -71,63 +85,73 @@ async function processListing(
   listing: ExtractedListing,
   profile: UserProfile,
   weights: ProfileWeights
-): Promise<void> {
-  console.log('[CivicEstate Phase1] Processing:', listing.zpid, listing.rawAddress)
+): Promise<Phase1Result['scores'] | null> {
+  try {
+    console.log('[CivicEstate Phase1] Processing:', listing.zpid, listing.rawAddress)
 
-  // Fire all 5 APIs in parallel
-  const [commuteResult, floodResult, wildfireResult, crimeResult, walkResult] = await Promise.all([
-    fetchCommute(listing.lat, listing.lon, profile.workLat, profile.workLon),
-    fetchFloodZone(listing.lat, listing.lon),
-    fetchWildfireHazard(listing.lat, listing.lon),
-    fetchCrimeData(listing.rawAddress),
-    fetchWalkability(listing.lat, listing.lon),
-  ])
+    // Fire all 5 APIs in parallel
+    const [commuteResult, floodResult, wildfireResult, crimeResult, walkResult] = await Promise.all([
+      fetchCommute(listing.lat, listing.lon, profile.workLat, profile.workLon),
+      fetchFloodZone(listing.lat, listing.lon),
+      fetchWildfireHazard(listing.lat, listing.lon),
+      fetchCrimeData(listing.rawAddress),
+      fetchWalkability(listing.lat, listing.lon),
+    ])
 
-  console.log('[CivicEstate Phase1] Raw API results for', listing.zpid, {
-    commute: commuteResult,
-    flood: floodResult,
-    wildfire: wildfireResult,
-    crime: crimeResult,
-    walkability: walkResult,
-  })
-
-  // Compute scores
-  const scores = computePhase1Scores(
-    {
+    console.log('[CivicEstate Phase1] Raw API results for', listing.zpid, {
       commute: commuteResult,
-      osmWalkabilityScore: walkResult.osmWalkabilityScore,
-      crimeGrade: crimeResult.crimeGrade,
-      crimeIndex: crimeResult.crimeIndex,
+      flood: floodResult,
+      wildfire: wildfireResult,
+      crime: crimeResult,
+      walkability: walkResult,
+    })
+
+    // Compute scores
+    const scores = computePhase1Scores(
+      {
+        commute: commuteResult,
+        osmWalkabilityScore: walkResult.osmWalkabilityScore,
+        crimeGrade: crimeResult.crimeGrade,
+        crimeIndex: crimeResult.crimeIndex,
+        floodRisk: floodResult.floodRisk,
+        wildfireHazard: wildfireResult.wildfireHazard,
+        annualTax: listing.annualTax,
+        price: listing.price,
+        priceDelta: listing.priceDelta,
+      },
+      profile,
+      weights
+    )
+
+    // Build Phase1Result
+    const phase1Result: Phase1Result = {
+      ...listing,
+      lat: listing.lat,
+      lon: listing.lon,
+      annualTax: listing.annualTax ?? 0,
+      yearBuilt: listing.yearBuilt ?? 0,
+      priceDelta: listing.priceDelta ?? 0,
+      priceDeltaFlag: listing.priceDeltaFlag,
+      commute: commuteResult,
+      floodZone: floodResult.floodZone,
       floodRisk: floodResult.floodRisk,
       wildfireHazard: wildfireResult.wildfireHazard,
-      annualTax: listing.annualTax,
-      price: listing.price,
-      priceDelta: listing.priceDelta,
-    },
-    profile,
-    weights
-  )
+      crimeGrade: crimeResult.crimeGrade,
+      crimeIndex: crimeResult.crimeIndex,
+      osmWalkabilityScore: walkResult.osmWalkabilityScore,
+      scores,
+    }
 
-  // Build Phase1Result
-  const phase1Result: Phase1Result = {
-    ...listing,
-    lat: listing.lat,
-    lon: listing.lon,
-    annualTax: listing.annualTax ?? 0,
-    yearBuilt: listing.yearBuilt ?? 0,
-    priceDelta: listing.priceDelta ?? 0,
-    priceDeltaFlag: listing.priceDeltaFlag,
-    commute: commuteResult,
-    floodZone: floodResult.floodZone,
-    floodRisk: floodResult.floodRisk,
-    wildfireHazard: wildfireResult.wildfireHazard,
-    crimeGrade: crimeResult.crimeGrade,
-    crimeIndex: crimeResult.crimeIndex,
-    osmWalkabilityScore: walkResult.osmWalkabilityScore,
-    scores,
+    // Store in chrome.storage keyed by zpid
+    await chrome.storage.local.set({ [listing.zpid]: phase1Result })
+    console.log('[CivicEstate Phase1] Stored result for', listing.zpid, 'scores:', scores)
+
+    // Notify popup that this listing's result is ready
+    chrome.runtime.sendMessage({ type: 'PHASE1_RESULT_READY', zpid: listing.zpid }).catch(() => {})
+
+    return scores
+  } catch (error) {
+    console.error('[CivicEstate Phase1] Failed to process listing:', listing.zpid, error)
+    return null
   }
-
-  // Store in chrome.storage keyed by zpid
-  await chrome.storage.local.set({ [listing.zpid]: phase1Result })
-  console.log('[CivicEstate Phase1] Stored result for', listing.zpid, 'scores:', scores)
 }

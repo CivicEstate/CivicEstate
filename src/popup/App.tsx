@@ -19,7 +19,8 @@ export default function App() {
       initialProfile={profile ?? undefined}
       onSave={saveProfile}
       onAnalyze={() => {
-        console.log('[CivicEstate] switching to Results view')
+        chrome.runtime.sendMessage({ type: 'TRIGGER_ANALYSIS' })
+        console.log('[CivicEstate] TRIGGER_ANALYSIS sent, switching to Results view')
         setView('results')
       }}
     />
