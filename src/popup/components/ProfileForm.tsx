@@ -117,7 +117,6 @@ function ToggleRow({
 export default function ProfileForm({
   initialProfile,
   onSave,
-  onGeocodeWorkLocation,
   isSaving = false,
   geocodeError = null,
 }: ProfileFormProps) {
@@ -130,21 +129,25 @@ export default function ProfileForm({
 
   const handleWorkBlur = async () => {
     if (!workInput.trim()) return;
-    if (onGeocodeWorkLocation) {
-      setGeocodeState("loading");
-      const result = await onGeocodeWorkLocation(workInput.trim()).catch(() => null);
-      if (result) {
-        set("workLat", result.lat);
-        set("workLon", result.lon);
-        setGeocodeState("resolved");
-      } else {
-        setGeocodeState("error");
-      }
-    } else {
-      // Fallback until Person B wires geocoding
-      set("workLat", 33.6846);
-      set("workLon", -117.8265);
+    setGeocodeState("loading");
+    const result = await new Promise<{ lat: number; lon: number } | null>((resolve) => {
+      chrome.runtime.sendMessage(
+        { type: 'GEOCODE_WORK_LOCATION', payload: workInput.trim() },
+        (response) => {
+          if (chrome.runtime.lastError || !response || response.error) {
+            resolve(null);
+          } else {
+            resolve({ lat: response.lat, lon: response.lon });
+          }
+        }
+      );
+    });
+    if (result) {
+      set("workLat", result.lat);
+      set("workLon", result.lon);
       setGeocodeState("resolved");
+    } else {
+      setGeocodeState("error");
     }
   };
 
