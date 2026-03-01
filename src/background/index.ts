@@ -1,24 +1,7 @@
-import { UserProfile, ProfileWeights } from '../types/index'
+import { UserProfile, ExtractedListing } from '../types/index'
 import { GOOGLE_MAPS_KEY } from '../constants/apiKeys'
-
-const DEFAULT_WEIGHTS: ProfileWeights = {
-  commuteWeight: 0.8,
-  walkabilityWeight: 0.6,
-  slopeWeight: 0.5,
-  crimeWeight: 0.7,
-  floodWeight: 0.6,
-  wildfireWeight: 0.6,
-  taxWeight: 0.5,
-  schoolWeight: 0.5,
-  parkWeight: 0.4,
-  childcareWeight: 0.4,
-  priceDeltaWeight: 0.6,
-}
-
-function geminiWeights(_profile: UserProfile): ProfileWeights {
-  console.log('geminiWeights called')
-  return DEFAULT_WEIGHTS
-}
+import { geminiWeights, DEFAULT_PROFILE_WEIGHTS } from './apis/geminiWeights'
+import { runPhase1Pipeline, MOCK_LISTING } from './phase1Pipeline'
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   console.log('[CivicEstate background] received:', message, 'from:', sender)
@@ -46,9 +29,57 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === 'SAVE_PROFILE') {
-    const weights = geminiWeights(message.payload as UserProfile)
-    chrome.storage.local.set({ profileWeights: weights })
-    sendResponse({ status: 'background-received' })
+    const profile = message.payload as UserProfile
+    geminiWeights(profile)
+      .then((weights) => {
+        console.log('[CivicEstate background] Gemini weights:', weights)
+        chrome.storage.local.set({ profileWeights: weights })
+        sendResponse({ status: 'weights-saved', weights })
+      })
+      .catch((err) => {
+        console.error('[CivicEstate background] geminiWeights failed, using defaults:', err)
+        chrome.storage.local.set({ profileWeights: DEFAULT_PROFILE_WEIGHTS })
+        sendResponse({ status: 'weights-saved', weights: DEFAULT_PROFILE_WEIGHTS })
+      })
+    return true
+  }
+
+  if (message.type === 'LISTINGS_EXTRACTED') {
+    const listings = message.payload as ExtractedListing[]
+    console.log('[CivicEstate background] Received', listings.length, 'listings from DOM parser')
+    chrome.storage.local.get('userProfile', (result) => {
+      const profile = result.userProfile as UserProfile | undefined
+      if (!profile) {
+        console.warn('[CivicEstate background] No user profile found, cannot run Phase 1')
+        sendResponse({ status: 'error', reason: 'no-profile' })
+        return
+      }
+      runPhase1Pipeline(listings, profile)
+        .then(() => sendResponse({ status: 'phase1-started' }))
+        .catch((err) => {
+          console.error('[CivicEstate background] Phase 1 failed:', err)
+          sendResponse({ status: 'error', reason: String(err) })
+        })
+    })
+    return true
+  }
+
+  if (message.type === 'TRIGGER_ANALYSIS') {
+    console.log('[CivicEstate background] TRIGGER_ANALYSIS — using mock listing')
+    chrome.storage.local.get('userProfile', (result) => {
+      const profile = result.userProfile as UserProfile | undefined
+      if (!profile) {
+        console.warn('[CivicEstate background] No user profile found, cannot run Phase 1')
+        sendResponse({ status: 'error', reason: 'no-profile' })
+        return
+      }
+      runPhase1Pipeline([MOCK_LISTING], profile)
+        .then(() => sendResponse({ status: 'phase1-started' }))
+        .catch((err) => {
+          console.error('[CivicEstate background] Phase 1 failed:', err)
+          sendResponse({ status: 'error', reason: String(err) })
+        })
+    })
     return true
   }
 

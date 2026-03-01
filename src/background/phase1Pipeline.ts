@@ -1,0 +1,133 @@
+import { ExtractedListing, UserProfile, ProfileWeights, Phase1Result } from '../types/index'
+import { fetchCommute } from './apis/googleMaps'
+import { fetchFloodZone } from './apis/fema'
+import { fetchWildfireHazard } from './apis/calfire'
+import { fetchCrimeData } from './apis/fbi'
+import { fetchWalkability } from './apis/osm'
+import { computePhase1Scores } from './scoring/phase1Scores'
+import { DEFAULT_PROFILE_WEIGHTS } from './apis/geminiWeights'
+
+// Mock listing for testing — real Irvine CA address
+export const MOCK_LISTING: ExtractedListing = {
+  zpid: 'mock-25432178',
+  rawAddress: '100 Spectrum Center Dr, Irvine, CA 92618',
+  lat: 33.6501,
+  lon: -117.7428,
+  price: 850000,
+  beds: 3,
+  baths: 2,
+  sqft: 1650,
+  yearBuilt: 2005,
+  homeType: 'Condo',
+  listingDescription: 'Modern condo near Irvine Spectrum with community pool and parks.',
+  zestimate: 870000,
+  priceDelta: -20000,
+  annualTax: 9800,
+  propertyTaxRate: 1.15,
+  annualHomeownersInsurance: 1200,
+  priceDeltaFlag: true,
+}
+
+export async function runPhase1Pipeline(
+  listings: ExtractedListing[],
+  userProfile: UserProfile
+): Promise<void> {
+  console.log('[CivicEstate Phase1] Starting pipeline for', listings.length, 'listings')
+  console.log('[CivicEstate Phase1] User profile:', userProfile)
+
+  const validated: ExtractedListing[] = []
+
+  for (const listing of listings) {
+    if (!listing.lat || !listing.lon || listing.lat === 0 || listing.lon === 0) {
+      console.warn('[CivicEstate Phase1] UNVERIFIED — missing lat/lon, skipping zpid:', listing.zpid)
+      continue
+    }
+    validated.push(listing)
+  }
+
+  console.log('[CivicEstate Phase1] Validated', validated.length, 'of', listings.length, 'listings')
+
+  if (validated.length === 0) {
+    console.warn('[CivicEstate Phase1] No valid listings to process')
+    return
+  }
+
+  // Load profile weights from storage (set during SAVE_PROFILE)
+  const weights = await new Promise<ProfileWeights>((resolve) => {
+    chrome.storage.local.get('profileWeights', (result) => {
+      resolve((result.profileWeights as ProfileWeights) ?? DEFAULT_PROFILE_WEIGHTS)
+    })
+  })
+
+  console.log('[CivicEstate Phase1] Using weights:', weights)
+
+  // Process all listings in parallel
+  await Promise.all(validated.map((listing) => processListing(listing, userProfile, weights)))
+
+  console.log('[CivicEstate Phase1] Pipeline complete for', validated.length, 'listings')
+}
+
+async function processListing(
+  listing: ExtractedListing,
+  profile: UserProfile,
+  weights: ProfileWeights
+): Promise<void> {
+  console.log('[CivicEstate Phase1] Processing:', listing.zpid, listing.rawAddress)
+
+  // Fire all 5 APIs in parallel
+  const [commuteResult, floodResult, wildfireResult, crimeResult, walkResult] = await Promise.all([
+    fetchCommute(listing.lat, listing.lon, profile.workLat, profile.workLon),
+    fetchFloodZone(listing.lat, listing.lon),
+    fetchWildfireHazard(listing.lat, listing.lon),
+    fetchCrimeData(listing.rawAddress),
+    fetchWalkability(listing.lat, listing.lon),
+  ])
+
+  console.log('[CivicEstate Phase1] Raw API results for', listing.zpid, {
+    commute: commuteResult,
+    flood: floodResult,
+    wildfire: wildfireResult,
+    crime: crimeResult,
+    walkability: walkResult,
+  })
+
+  // Compute scores
+  const scores = computePhase1Scores(
+    {
+      commute: commuteResult,
+      osmWalkabilityScore: walkResult.osmWalkabilityScore,
+      crimeGrade: crimeResult.crimeGrade,
+      crimeIndex: crimeResult.crimeIndex,
+      floodRisk: floodResult.floodRisk,
+      wildfireHazard: wildfireResult.wildfireHazard,
+      annualTax: listing.annualTax,
+      price: listing.price,
+      priceDelta: listing.priceDelta,
+    },
+    profile,
+    weights
+  )
+
+  // Build Phase1Result
+  const phase1Result: Phase1Result = {
+    ...listing,
+    lat: listing.lat,
+    lon: listing.lon,
+    annualTax: listing.annualTax ?? 0,
+    yearBuilt: listing.yearBuilt ?? 0,
+    priceDelta: listing.priceDelta ?? 0,
+    priceDeltaFlag: listing.priceDeltaFlag,
+    commute: commuteResult,
+    floodZone: floodResult.floodZone,
+    floodRisk: floodResult.floodRisk,
+    wildfireHazard: wildfireResult.wildfireHazard,
+    crimeGrade: crimeResult.crimeGrade,
+    crimeIndex: crimeResult.crimeIndex,
+    osmWalkabilityScore: walkResult.osmWalkabilityScore,
+    scores,
+  }
+
+  // Store in chrome.storage keyed by zpid
+  await chrome.storage.local.set({ [listing.zpid]: phase1Result })
+  console.log('[CivicEstate Phase1] Stored result for', listing.zpid, 'scores:', scores)
+}
