@@ -146,6 +146,9 @@ async function processListing(
     await chrome.storage.local.set({ [listing.zpid]: phase1Result })
     console.log('[CivicEstate Phase1] Stored result for', listing.zpid, 'scores:', scores)
 
+    // Notify popup that this listing's result is ready
+    chrome.runtime.sendMessage({ type: 'PHASE1_RESULT_READY', zpid: listing.zpid }).catch(() => {})
+
     return scores
   } catch (error) {
     console.error('[CivicEstate Phase1] Failed to process listing:', listing.zpid, error)

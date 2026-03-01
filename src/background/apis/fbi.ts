@@ -58,7 +58,8 @@ async function findORI(state: string, city: string): Promise<string | null> {
       return null
     }
 
-    const agencies: any[] = await res.json()
+    const raw = await res.json()
+    const agencies: any[] = Array.isArray(raw) ? raw : (raw?.results ?? raw?.data ?? Object.values(raw))
     const cityLower = city.toLowerCase()
 
     const match =
