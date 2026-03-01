@@ -30,6 +30,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     )
       .then((r) => r.json())
       .then((data) => {
+        console.log('[CivicEstate geocode] Google response:', data)
         if (data.status === 'OK' && data.results[0]) {
           const { lat, lng } = data.results[0].geometry.location
           sendResponse({ lat, lon: lng })
@@ -37,7 +38,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           sendResponse({ error: true })
         }
       })
-      .catch(() => sendResponse({ error: true }))
+      .catch((err) => {
+        console.error('[CivicEstate geocode] fetch failed:', err)
+        sendResponse({ error: true })
+      })
     return true
   }
 

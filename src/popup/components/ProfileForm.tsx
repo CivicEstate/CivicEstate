@@ -298,11 +298,10 @@ const s: Record<string, React.CSSProperties> = {
     background: "#f5f0e8",
     fontFamily: "'Nunito', system-ui, sans-serif",
     color: "#2d2a24",
-    minHeight: "100vh",
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    padding: "40px 20px 80px",
+    padding: "32px 16px 48px",
   },
   pageTitle: {
     fontSize: 34,

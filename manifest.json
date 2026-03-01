@@ -4,7 +4,19 @@
   "version": "0.1.0",
   "description": "Personalized lifestyle and accessibility intelligence for Zillow listings",
   "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": ["https://www.zillow.com/*"],
+  "host_permissions": [
+    "https://www.zillow.com/*",
+    "https://maps.googleapis.com/*",
+    "https://places.googleapis.com/*",
+    "https://api.melissa.com/*",
+    "https://api.fbi.gov/*",
+    "https://hazards.fema.gov/*",
+    "https://egis.fire.ca.gov/*",
+    "https://overpass-api.de/*",
+    "https://educationdata.urban.org/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://offender.io/*"
+  ],
   "background": {
     "service_worker": "src/background/index.ts",
     "type": "module"
