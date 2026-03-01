@@ -2,6 +2,7 @@ CLAUDE.md
 CivicEstate - Chrome extension overlaying personalized lifestyle and accessibility intelligence onto Zillow listings using real APIs and AI.
 PROGRESS.md tracks completed phases and current status.
 UPDATe PROGRESS.MD appends what you actually built to PROGRESS.md under whatever phase youare in. do not make. aparticular progress.md phase too lengthy. 
+types/index.ts is the source of truth language do not change this ever
 
 Project Structure
 civicestate/
