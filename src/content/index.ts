@@ -1,6 +1,6 @@
 console.log('[CE] content script loaded')
 import { detectPageType, findNextData, extractListings } from '../utils/domParser'
-import { Phase1Result } from '../types/index'
+import { Phase1Result, Phase2Result, GeminiOutput } from '../types/index'
 
 // Fallback averages — must match background/scoring/irvineAverages.ts
 const IRVINE_AVERAGES = { lifestyle: 7.2, accessibility: 6.8, family: 8.1, riskCost: 6.5, overall: 7.1 }
@@ -160,6 +160,226 @@ function injectScorePanel(
   panel.addEventListener('click', mainClickHandler, true)
 }
 
+// ── Detail View ──────────────────────────────────────────────────────────────
+
+function detailScoresHtml(
+  scores: { lifestyle: number; accessibility: number; family: number; riskCost: number; overall: number },
+  avgs: typeof IRVINE_AVERAGES
+): string {
+  const bars = [
+    { label: 'Lifestyle', key: 'lifestyle' as const },
+    { label: 'Accessibility', key: 'accessibility' as const },
+    { label: 'Family', key: 'family' as const },
+    { label: 'Risk/Cost', key: 'riskCost' as const },
+  ]
+  return `<div style="display:flex;gap:8px;padding:8px 0">${bars.map((b) => badgeHtml(b.label, scores[b.key], avgs[b.key])).join('')}</div>`
+}
+
+function detailGeminiHtml(gemini: GeminiOutput): string {
+  const narrative = `<p style="font-size:14px;color:#374151;line-height:1.6;margin:12px 0">${gemini.narrative}</p>`
+
+  const highlights = gemini.highlights
+    .map((h) => `<div style="font-size:13px;color:#1f2937;padding:4px 0;line-height:1.5">${h}</div>`)
+    .join('')
+  const highlightsBlock = `<div style="border-top:1px solid #e5e7eb;padding:8px 0">${highlights}</div>`
+
+  let agentBlock = ''
+  if (gemini.agentQuestions.length > 0) {
+    agentBlock = `<div style="margin-top:8px;padding:10px 12px;background:#eef2ff;border-left:3px solid #6366f1;border-radius:6px;font-size:13px;color:#4338ca;line-height:1.5">
+      <span style="font-weight:700">Ask your agent:</span> ${gemini.agentQuestions[0]}
+    </div>`
+  }
+
+  return narrative + highlightsBlock + agentBlock
+}
+
+function initDetailView(): void {
+  const match = window.location.pathname.match(/(\d+)_zpid/)
+  if (!match) {
+    console.warn('[CE detail] Could not extract zpid from URL')
+    return
+  }
+  const zpid = match[1]
+  console.log('[CE detail] zpid:', zpid)
+
+  // Guard: don't inject twice
+  if (document.getElementById(`ce-detail-${zpid}`)) return
+
+  // Find injection point — try multiple selectors, retry with MutationObserver if not found yet
+  function findAnchor(): Element | null {
+    return document.querySelector('[data-testid="description"]')
+      ?? document.querySelector('[data-testid="bed-bath-beyond"]')
+      ?? document.querySelector('.ds-overview')
+  }
+
+  let anchor = findAnchor()
+  if (!anchor) {
+    console.log('[CE detail] anchor not found yet, waiting for DOM...')
+    let attempts = 0
+    const maxAttempts = 20 // ~10s with 500ms debounce
+    const domObserver = new MutationObserver(() => {
+      attempts++
+      anchor = findAnchor()
+      if (anchor) {
+        console.log('[CE detail] anchor found after', attempts, 'mutations')
+        domObserver.disconnect()
+        mountDetailView(anchor)
+      } else if (attempts >= maxAttempts) {
+        console.warn('[CE detail] anchor not found after', maxAttempts, 'attempts, giving up')
+        domObserver.disconnect()
+      }
+    })
+    domObserver.observe(document.body, { childList: true, subtree: true })
+    return
+  }
+
+  mountDetailView(anchor)
+
+  function mountDetailView(anchorEl: Element): void {
+    // Guard again in case of race with MutationObserver
+    if (document.getElementById(`ce-detail-${zpid}`)) return
+
+    // Create container
+    const container = document.createElement('div')
+    container.id = `ce-detail-${zpid}`
+    container.style.cssText = `
+      margin: 16px 0;
+      padding: 16px 20px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      font-family: system-ui, -apple-system, sans-serif;
+    `
+
+    const banner = `<div style="font-size:16px;font-weight:700;color:#1f2937;padding-bottom:8px;border-bottom:2px solid #6366f1;margin-bottom:8px">CivicEstate Analysis</div>`
+
+    // Insert after the anchor element
+    anchorEl.parentNode!.insertBefore(container, anchorEl.nextSibling)
+
+    // Helper: render full Phase 2 view with Gemini data
+    function renderPhase2(gemini: GeminiOutput): void {
+      const aiAvgs = {
+        lifestyle: gemini.scores.lifestyle - gemini.scoreDeltas.lifestyle,
+        accessibility: gemini.scores.accessibility - gemini.scoreDeltas.accessibility,
+        family: gemini.scores.family - gemini.scoreDeltas.family,
+        riskCost: gemini.scores.riskCost - gemini.scoreDeltas.riskCost,
+        overall: gemini.scores.overall - gemini.scoreDeltas.overall,
+      }
+      container.innerHTML = banner + detailScoresHtml(gemini.scores, aiAvgs) + detailGeminiHtml(gemini)
+    }
+
+    // Helper: show failure state with retry button
+    function renderFailure(): void {
+      const spinner = document.getElementById(`ce-detail-spinner-${zpid}`)
+      if (spinner) {
+        spinner.innerHTML = `<span style="font-size:13px;color:#92400e;font-weight:600">AI insights unavailable — try again</span>
+          <button id="ce-detail-retry-${zpid}" style="padding:4px 12px;background:#6366f1;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer">Retry</button>`
+        document.getElementById(`ce-detail-retry-${zpid}`)?.addEventListener('click', () => {
+          chrome.runtime.sendMessage({ type: 'TRIGGER_PHASE2', zpid })
+          spinner.innerHTML = `<div style="width:16px;height:16px;border:2px solid #6366f1;border-top-color:transparent;border-radius:50%;animation:ce-spin 0.8s linear infinite"></div>
+            <span style="font-size:13px;color:#6366f1;font-weight:600">Generating AI insights...</span>`
+          startPolling()
+        })
+      }
+    }
+
+    // Helper: re-read storage and render whatever state we find
+    function readAndRender(): void {
+      chrome.storage.local.get(zpid, (data) => {
+        const result = data[zpid] as Phase2Result | undefined
+        console.log('[CE detail] readAndRender storage for zpid:', zpid, 'hasGeminiOutput:', result && 'geminiOutput' in result, 'geminiOutput:', (result as any)?.geminiOutput ? 'present' : 'null/missing')
+        if (result && 'geminiOutput' in result) {
+          if (result.geminiOutput) {
+            renderPhase2(result.geminiOutput)
+          } else {
+            renderFailure()
+          }
+        }
+      })
+    }
+
+    // Listen for background messages so we update immediately when Phase 2 completes
+    chrome.runtime.onMessage.addListener((message) => {
+      if ((message.type === 'PHASE2_RESULT_READY' || message.type === 'PHASE2_ERROR') && message.zpid === zpid) {
+        console.log('[CE detail] received message:', message.type, 'for zpid:', zpid)
+        readAndRender()
+      }
+    })
+
+    // Read storage and render appropriate state
+    chrome.storage.local.get(zpid, (data) => {
+      const stored = data[zpid] as Phase1Result | Phase2Result | undefined
+      console.log('[CE detail] initial storage read for zpid:', zpid, 'found:', stored ? 'yes' : 'no', 'hasGeminiOutput:', stored && 'geminiOutput' in stored)
+
+      // State C — nothing in storage
+      if (!stored || !stored.scores) {
+        container.innerHTML = banner +
+          `<p style="font-size:13px;color:#6b7280;margin:12px 0">No analysis data found for this listing.</p>
+           <button id="ce-detail-run-${zpid}" style="padding:8px 16px;background:#6366f1;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Run Analysis</button>`
+
+        const btn = document.getElementById(`ce-detail-run-${zpid}`)
+        btn?.addEventListener('click', () => {
+          btn.textContent = 'Generating AI insights...'
+          btn.setAttribute('disabled', 'true')
+          btn.style.opacity = '0.6'
+          chrome.runtime.sendMessage({ type: 'TRIGGER_PHASE2', zpid })
+          startPolling()
+        })
+        return
+      }
+
+      // State A — Phase2Result (has geminiOutput key)
+      if ('geminiOutput' in stored && stored.geminiOutput) {
+        renderPhase2(stored.geminiOutput as GeminiOutput)
+        return
+      }
+
+      // State B — Phase1Result only, trigger Phase 2 and poll
+      container.innerHTML = banner +
+        detailScoresHtml(stored.scores, IRVINE_AVERAGES) +
+        `<div id="ce-detail-spinner-${zpid}" style="display:flex;align-items:center;gap:8px;padding:12px 0">
+          <div style="width:16px;height:16px;border:2px solid #6366f1;border-top-color:transparent;border-radius:50%;animation:ce-spin 0.8s linear infinite"></div>
+          <span style="font-size:13px;color:#6366f1;font-weight:600">Generating AI insights...</span>
+        </div>
+        <style>@keyframes ce-spin { to { transform: rotate(360deg) } }</style>`
+
+      chrome.runtime.sendMessage({ type: 'TRIGGER_PHASE2', zpid })
+      startPolling()
+    })
+
+    function startPolling(): void {
+      let polls = 0
+      const maxPolls = 15 // 15 × 2s = 30s
+      console.log('[CE detail] startPolling() called for zpid:', zpid)
+
+      const interval = setInterval(() => {
+        polls++
+        console.log('[CE detail] poll #', polls, 'of', maxPolls, 'for zpid:', zpid)
+        chrome.storage.local.get(zpid, (data) => {
+          const result = data[zpid] as Phase2Result | undefined
+          console.log('[CE detail] poll storage read:', 'hasResult:', !!result, 'hasGeminiOutput:', result && 'geminiOutput' in result, 'geminiOutput:', (result as any)?.geminiOutput ? 'present' : 'null/missing')
+
+          if (result && 'geminiOutput' in result) {
+            clearInterval(interval)
+            if (result.geminiOutput) {
+              renderPhase2(result.geminiOutput)
+            } else {
+              renderFailure()
+            }
+            return
+          }
+
+          if (polls >= maxPolls) {
+            clearInterval(interval)
+            renderFailure()
+          }
+        })
+      }, 2000)
+    }
+  } // end mountDetailView
+} // end initDetailView
+
 // ── State for current search session ─────────────────────────────────────────
 
 let currentZpidList: string[] = []
@@ -221,7 +441,7 @@ function runContentScript(): void {
   }
 
   if (pageType === 'detail') {
-    console.log('[CivicEstate] Detail page detected, no extraction needed.')
+    initDetailView()
     return
   }
 
@@ -303,31 +523,7 @@ function runContentScript(): void {
         if (statusEl) statusEl.remove()
 
         if ((result as any).geminiOutput) {
-          const gemini = (result as any).geminiOutput as import('../types/index').GeminiOutput
           panel.style.border = '2px solid #22c55e'
-
-          const narrative = document.createElement('p')
-          narrative.style.cssText = 'font-size:11px;color:#374151;margin:6px 0 4px;line-height:1.4;'
-          narrative.textContent = gemini.narrative
-          panel.appendChild(narrative)
-
-          if (gemini.highlights.length > 0) {
-            const list = document.createElement('ul')
-            list.style.cssText = 'margin:0 0 4px;padding-left:16px;font-size:10px;color:#4b5563;'
-            for (const h of gemini.highlights) {
-              const li = document.createElement('li')
-              li.textContent = h
-              list.appendChild(li)
-            }
-            panel.appendChild(list)
-          }
-
-          if (gemini.agentQuestions.length > 0) {
-            const q = document.createElement('div')
-            q.style.cssText = 'font-size:10px;color:#6366f1;font-style:italic;margin-top:2px;'
-            q.textContent = `Ask your agent: ${gemini.agentQuestions[0]}`
-            panel.appendChild(q)
-          }
         } else {
           panel.style.border = '2px solid #f59e0b'
           const msg = document.createElement('div')
@@ -392,6 +588,14 @@ function watchForNavigation(): void {
   window.addEventListener('popstate', () => {
     setTimeout(runContentScript, 300)
   })
+
+  // Fallback: poll URL every 1s in case Next.js captured pushState before our script loaded
+  setInterval(() => {
+    if (window.location.href !== lastUrl) {
+      console.log('[CE] URL change detected via poll:', window.location.href)
+      runContentScript()
+    }
+  }, 1000)
 }
 
 // Initial run
