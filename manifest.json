@@ -10,6 +10,7 @@
     "https://places.googleapis.com/*",
     "https://api.melissa.com/*",
     "https://api.fbi.gov/*",
+    "https://api.usa.gov/*",
     "https://hazards.fema.gov/*",
     "https://egis.fire.ca.gov/*",
     "https://overpass-api.de/*",

@@ -23,7 +23,22 @@
 ## Phase 2: Zillow DOM Parsing ⬜ NOT STARTED
 
 
-## Phase 3: Phase 1 API Pipeline ⬜ NOT STARTED
+## Phase 3: Phase 1 API Pipeline ✅ COMPLETE
+- [x] geminiWeights.ts — calls Gemini 2.5 Flash to generate ProfileWeights from UserProfile, falls back to defaults
+- [x] SAVE_PROFILE listener wired to real async geminiWeights call
+- [x] phase1Pipeline.ts — mock ExtractedListing (Irvine CA), lat/lon validation, logging skeleton
+- [x] LISTINGS_EXTRACTED listener — receives DOM parser payload, reads profile, runs Phase 1
+- [x] TRIGGER_ANALYSIS listener — runs Phase 1 with mock listing for testing
+- [x] googleMaps.ts — 4 parallel direction fetches (carPeak, carOffpeak, transit, walk), per-mode error isolation
+- [x] fema.ts — NFHL ArcGIS query, flood zone → risk mapping (High/Moderate/Low/Undetermined)
+- [x] calfire.ts — FHSZ ArcGIS query with SRA→LRA fallback, HAZ_CLASS extraction
+- [x] fbi.ts — address parsing → ORI lookup → offense data → crimeIndex (0-100) → grade (A-F)
+- [x] osm.ts — Overpass API 2km radius, weighted amenity scoring capped at 100
+- [x] irvineAverages.ts — baseline Irvine scores for delta display
+- [x] phase1Scores.ts — computePhase1Scores with sub-scores (commute, walk, crime, flood, wildfire, tax, priceDelta), weighted category averages, overall = 0.30/0.15/0.25/0.30
+- [x] phase1Pipeline.ts wired — loads ProfileWeights, Promise.all across listings, Promise.all per listing (5 APIs), stores Phase1Result in chrome.storage by zpid
+- [x] manifest.json — added api.usa.gov host permission for FBI CDE API
+- [x] Build verified — vite build + tsc --noEmit pass clean
 
 ## Phase 4: Search Results Card UI ⬜ NOT STARTED
 
