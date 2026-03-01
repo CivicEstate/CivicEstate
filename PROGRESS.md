@@ -20,13 +20,14 @@
 - [x] App.tsx shell with profile/results view state
 - [x] All API host_permissions added to manifest
 
-## Phase 2: Zillow DOM Parsing 🔧 IN PROGRESS
+## Phase 2: Zillow DOM Parsing ✅ COMPLETE
 - [x] Page type detection (search vs detail vs other) via URL patterns
 - [x] __NEXT_DATA__ script tag locator with JSON parse and root key logging
 - [x] extractListings() with confirmed live path: props.pageProps.searchPageState.cat1.searchResults.listResults
 - [x] Field mapping: zpid, address, latLong, unformattedPrice, beds, baths, area→sqft, zestimate, priceDelta/flag
 - [x] Filters out listings missing required fields, caps at 10
 - [x] Sends LISTINGS_EXTRACTED message to background with payload
+- [x] Stores full ExtractedListing[] as currentListings in chrome.storage.local for popup
 
 
 ## Phase 3: Phase 1 API Pipeline ✅ COMPLETE
@@ -46,8 +47,14 @@
 - [x] manifest.json — added api.usa.gov host permission for FBI CDE API
 - [x] Build verified — vite build + tsc --noEmit pass clean
 
-## Phase 4: Search Results Card UI 🔧 IN PROGRESS
+## Phase 4: Search Results UI ✅ COMPLETE
 - [x] batchAverages aggregation — Phase 1 pipeline computes mean of all 5 score fields after Promise.all, stores to chrome.storage.local as `batchAverages`
+- [x] Switched from popup results view to Zillow DOM injection
+- [x] content/index.ts — listens for PHASE1_RESULT_READY, reads Phase1Result by zpid, injects score panel into Zillow tiles via plain DOM
+- [x] Score panel: overall score with color coding, 4 sub-scores with delta arrows vs batchAverages (fallback to IRVINE_AVERAGES), commute time + crime grade
+- [x] Duplicate injection guard via `ce-scores-${zpid}` element id
+- [x] App.tsx — stripped to profile-only, Analyze sends TRIGGER_ANALYSIS then window.close()
+- [x] Build verified — vite build + tsc --noEmit pass clean
 
 ## Phase 5: Phase 2 API Pipeline ⬜ NOT STARTED
 
