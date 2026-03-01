@@ -4,16 +4,45 @@ import { IRVINE_AVERAGES } from '../scoring/irvineAverages'
 
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`
 
+const MODE_LABELS: Record<UserProfile['mode'], string> = { drives: 'Drives', transit: 'Transit', walk: 'Walks' }
+const REMOTE_LABELS: Record<UserProfile['remoteFrequency'], string> = { remote: 'Fully Remote', hybrid: 'Hybrid', office: 'In-Office' }
+
+export function buildProfileLabel(profile: UserProfile): string {
+  const parts: string[] = [
+    MODE_LABELS[profile.mode],
+    REMOTE_LABELS[profile.remoteFrequency],
+  ]
+  if (profile.workLat != null && profile.workLat !== 0) parts.push('Work')
+  parts.push(profile.hasKids ? 'Kids' : 'No Kids')
+  parts.push(profile.hasPet ? 'Pet' : 'No Pet')
+  return parts.join(', ')
+}
+
 function buildSystemPrompt(): string {
   return [
     'You are a real-estate analyst for a Chrome extension called CivicEstate.',
     'Reason step by step before producing output.',
-    'Cite real numbers from the data provided.',
-    'Identify tensions specific to this user profile.',
     'Only reference zestimate, annualTax, or propertyTaxRate if they are not null in the data.',
     'Do not reference sex offender data under any circumstance.',
     'Output strict JSON only — no markdown fences, no preamble, no explanation outside the JSON object.',
-  ].join(' ')
+    '',
+    'NARRATIVE RULES:',
+    '- Exactly 3 sentences.',
+    '- Each sentence must cite at least one real number from the data (commute minutes, distance miles, price, crime index, slope %, etc.).',
+    '- Write for THIS specific buyer: reference their commute mode (drives/transit/walk), whether they have kids, and whether they have pets by name.',
+    '- Do not be generic — tie every sentence to a tension or advantage unique to this profile.',
+    '',
+    'HIGHLIGHTS RULES:',
+    '- Minimum 4, maximum 7 items.',
+    '- Each item must start with exactly one of: ✅ ❌ ⚠️ 💰',
+    '- ✅ for positives, ❌ for hard negatives, ⚠️ for warnings, 💰 for financial observations.',
+    '- Each item must cite at least one real number from the data.',
+    '',
+    'AGENT QUESTIONS RULES:',
+    '- Exactly 1 question.',
+    '- It must reference a specific number or flag from the data (e.g. a crime index value, a slope percentage, a flood zone designation).',
+    '- The question must be actionable — something a real estate agent can actually answer or investigate.',
+  ].join('\n')
 }
 
 function buildUserPrompt(data: Phase2Result, profile: UserProfile): string {
@@ -78,7 +107,7 @@ function buildUserPrompt(data: Phase2Result, profile: UserProfile): string {
     '- scoreDeltas: { lifestyle: number, accessibility: number, family: number, riskCost: number, overall: number }',
     '- narrative: exactly 3 sentences citing real numbers from the data',
     '- highlights: string array, each prefixed with one of ✅ ❌ ⚠️ 💰',
-    '- agentQuestions: exactly 3 strings a buyer should ask their agent',
+    '- agentQuestions: a JSON array containing exactly 1 string — e.g. ["What about...?"]. Must be an array, not a bare string.',
     '- chatContext: one dense paragraph summarizing all fetched facts for later chat use',
   ].join('\n')
 }
@@ -101,15 +130,22 @@ function validateOutput(obj: unknown): GeminiOutput | null {
     if (typeof deltas[k] !== 'number') return null
   }
 
-  // narrative
+  // narrative — must be non-empty string containing at least 2 numbers
   if (typeof o.narrative !== 'string' || o.narrative.length === 0) return null
+  const numberMatches = o.narrative.match(/\d+/g)
+  if (!numberMatches || numberMatches.length < 2) return null
 
-  // highlights
-  if (!Array.isArray(o.highlights) || o.highlights.length === 0) return null
-  if (!o.highlights.every((h: unknown) => typeof h === 'string')) return null
+  // highlights — 4-7 items, each string starting with ✅ ❌ ⚠️ or 💰
+  if (!Array.isArray(o.highlights)) return null
+  if (o.highlights.length < 4 || o.highlights.length > 7) return null
+  const validPrefixes = ['✅', '❌', '⚠️', '💰']
+  if (!o.highlights.every((h: unknown) => typeof h === 'string' && validPrefixes.some(p => (h as string).startsWith(p)))) return null
 
-  // agentQuestions
-  if (!Array.isArray(o.agentQuestions) || o.agentQuestions.length === 0) return null
+  // agentQuestions — exactly 1; coerce bare string → array
+  if (typeof o.agentQuestions === 'string') {
+    o.agentQuestions = [o.agentQuestions]
+  }
+  if (!Array.isArray(o.agentQuestions) || o.agentQuestions.length !== 1) return null
   if (!o.agentQuestions.every((q: unknown) => typeof q === 'string')) return null
 
   // chatContext

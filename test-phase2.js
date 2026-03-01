@@ -122,10 +122,10 @@
       ? pass('geminiOutput.highlights is non-empty array')
       : fail('geminiOutput.highlights', g.highlights);
 
-    // agentQuestions — exactly 3
-    Array.isArray(g.agentQuestions) && g.agentQuestions.length === 3
-      ? pass('geminiOutput.agentQuestions has exactly 3 items')
-      : fail(`geminiOutput.agentQuestions has ${g.agentQuestions?.length} items (expected 3)`, g.agentQuestions);
+    // agentQuestions — exactly 1
+    Array.isArray(g.agentQuestions) && g.agentQuestions.length === 1
+      ? pass('geminiOutput.agentQuestions has exactly 1 item')
+      : fail(`geminiOutput.agentQuestions has ${g.agentQuestions?.length} items (expected 1)`, g.agentQuestions);
 
     // chatContext
     typeof g.chatContext === 'string' && g.chatContext.length > 0
