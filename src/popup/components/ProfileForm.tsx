@@ -1,28 +1,22 @@
 import React, { useState } from "react";
+import { UserProfile } from "../../types/index";
 
-// ── Types (import from src/types/index.ts in production) ──────────────────
-export interface UserProfile {
-  mode: "drives" | "transit" | "walks";
+// Local form state allows null for workLat/workLon before geocoding
+type FormProfile = Omit<UserProfile, 'workLat' | 'workLon'> & {
   workLat: number | null;
   workLon: number | null;
-  remoteFrequency: "fully-remote" | "hybrid" | "in-office";
-  hasKids: boolean;
-  hasPet: boolean;
-  mobility: "none" | "wheelchair" | "elderly";
-  ageRange: "20s-30s" | "40s-50s" | "60s+";
-  taxSensitive: boolean;
-}
+};
 
-// ── Props — Person B wires these when storage/geocoding is ready ───────────
 interface ProfileFormProps {
   initialProfile?: UserProfile;
   onSave?: (profile: UserProfile) => void;
+  onAnalyze?: () => void;
   onGeocodeWorkLocation?: (address: string) => Promise<{ lat: number; lon: number } | null>;
   isSaving?: boolean;
   geocodeError?: string | null;
 }
 
-const DEFAULT_PROFILE: UserProfile = {
+const DEFAULT_PROFILE: FormProfile = {
   mode: "drives",
   workLat: null,
   workLon: null,
@@ -30,7 +24,7 @@ const DEFAULT_PROFILE: UserProfile = {
   hasKids: false,
   hasPet: false,
   mobility: "none",
-  ageRange: "20s-30s",
+  ageRange: "20s30s",
   taxSensitive: false,
 };
 
@@ -129,15 +123,16 @@ function ToggleRow({
 export default function ProfileForm({
   initialProfile,
   onSave,
+  onAnalyze,
   onGeocodeWorkLocation,
   isSaving = false,
   geocodeError = null,
 }: ProfileFormProps) {
-  const [profile, setProfile] = useState<UserProfile>(initialProfile ?? DEFAULT_PROFILE);
+  const [profile, setProfile] = useState<FormProfile>(initialProfile ?? DEFAULT_PROFILE);
   const [workInput, setWorkInput] = useState("");
   const [geocodeState, setGeocodeState] = useState<"idle" | "loading" | "resolved" | "error">("idle");
 
-  const set = <K extends keyof UserProfile>(key: K, val: UserProfile[K]) =>
+  const set = <K extends keyof FormProfile>(key: K, val: FormProfile[K]) =>
     setProfile((p) => ({ ...p, [key]: val }));
 
   const handleWorkBlur = async () => {
@@ -153,7 +148,7 @@ export default function ProfileForm({
         setGeocodeState("error");
       }
     } else {
-      // Fallback until Person B wires geocoding
+      // Fallback until geocoding is wired
       set("workLat", 33.6846);
       set("workLon", -117.8265);
       setGeocodeState("resolved");
@@ -161,6 +156,11 @@ export default function ProfileForm({
   };
 
   const canSave = profile.workLat !== null && profile.workLon !== null;
+
+  const handleSave = () => {
+    if (!canSave || isSaving) return;
+    onSave?.({ ...profile, workLat: profile.workLat!, workLon: profile.workLon! } as UserProfile);
+  };
 
   return (
     <div style={s.root}>
@@ -176,7 +176,7 @@ export default function ProfileForm({
             options={[
               { value: "drives", label: "Drives", emoji: "🚗" },
               { value: "transit", label: "Transit", emoji: "🚌" },
-              { value: "walks", label: "Walks", emoji: "🚶" },
+              { value: "walk", label: "Walks", emoji: "🚶" },
             ]}
           />
         </Card>
@@ -214,9 +214,9 @@ export default function ProfileForm({
             value={profile.remoteFrequency}
             onChange={(v) => set("remoteFrequency", v)}
             options={[
-              { value: "fully-remote", label: "Fully Remote", emoji: "🏠" },
+              { value: "remote", label: "Fully Remote", emoji: "🏠" },
               { value: "hybrid", label: "Hybrid", emoji: "📅" },
-              { value: "in-office", label: "In-Office", emoji: "🏢" },
+              { value: "office", label: "In-Office", emoji: "🏢" },
             ]}
           />
         </Card>
@@ -246,22 +246,31 @@ export default function ProfileForm({
           <select
             style={s.ageSelect}
             value={profile.ageRange}
-            onChange={(e) => set("ageRange", e.target.value as UserProfile["ageRange"])}
+            onChange={(e) => set("ageRange", e.target.value as FormProfile["ageRange"])}
             aria-label="Age range"
           >
-            <option value="20s-30s">20s–30s</option>
-            <option value="40s-50s">40s–50s</option>
-            <option value="60s+">60s+</option>
+            <option value="20s30s">20s–30s</option>
+            <option value="40s50s">40s–50s</option>
+            <option value="60s">60s+</option>
           </select>
         </Card>
 
         <button
-          onClick={() => canSave && !isSaving && onSave?.(profile)}
+          onClick={handleSave}
           disabled={!canSave || isSaving}
           style={{ ...s.saveBtn, ...(!canSave || isSaving ? s.saveBtnDisabled : {}) }}
           aria-label="Save profile"
         >
           {isSaving ? "Saving…" : "Save Profile"}
+        </button>
+
+        <button
+          onClick={() => canSave && onAnalyze?.()}
+          disabled={!canSave}
+          style={{ ...s.analyzeBtn, ...(!canSave ? s.analyzeBtnDisabled : {}) }}
+          aria-label="Analyze listings"
+        >
+          Analyze
         </button>
 
       </div>
@@ -430,6 +439,24 @@ const s: Record<string, React.CSSProperties> = {
     boxShadow: "none",
     cursor: "not-allowed",
     color: "#fff",
+  },
+  analyzeBtn: {
+    width: "100%",
+    padding: 18,
+    borderRadius: 16,
+    border: `2px solid ${BLUE}`,
+    background: "#fff",
+    color: BLUE,
+    fontSize: 17,
+    fontWeight: 800,
+    fontFamily: "inherit",
+    cursor: "pointer",
+    marginTop: 4,
+  },
+  analyzeBtnDisabled: {
+    borderColor: "#d4cfc6",
+    color: "#d4cfc6",
+    cursor: "not-allowed",
   },
 };
  
